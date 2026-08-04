@@ -18,12 +18,12 @@ function seededRandom(seed) {
 }
 
 function WaveformBars({ url, pct }) {
-  const barCount = 40
+  const barCount = 36
   const bars = useMemo(() => {
     const rand = seededRandom(url || 'default')
     return Array.from({ length: barCount }, () => 0.25 + rand() * 0.75)
   }, [url])
-  const active = Math.max(0, Math.min(barCount, Math.round((pct / 100) * barCount)))
+  const active = Math.max(0, Math.min(barCount, Math.floor((pct / 100) * barCount)))
 
   return (
     <div className="waveform">
@@ -34,7 +34,7 @@ function WaveformBars({ url, pct }) {
           <span
             key={i}
             className={`waveform-bar ${playing ? 'active' : ''}`}
-            style={{ height: `${Math.max(12, h * 100)}%` }}
+            style={{ height: `${Math.max(16, h * 80)}%` }}
           />
         )
       })}
@@ -87,23 +87,23 @@ export default function AudioPlayer({ url, className = '' }) {
   const pct = duration ? (current / duration) * 100 : 0
 
   return (
-    <div className={`flex items-center gap-2 w-full max-w-full px-1 py-1 ${className}`} dir="ltr">
+    <div className={`flex items-center gap-2 w-full max-w-full min-w-0 ${className}`} dir="ltr">
       <button
         onClick={toggle}
         type="button"
-        className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-white hover:bg-white/10 transition"
+        className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 text-white hover:bg-white/10 transition"
+        aria-label={playing ? 'إيقاف مؤقت' : 'تشغيل'}
       >
-        {playing ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" className="mr-0.5" />}
+        {playing ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" className="ml-0.5" />}
       </button>
       <div className="flex-1 min-w-0" onClick={seek}>
         <div className="h-10 cursor-pointer flex items-center">
           <WaveformBars url={url} pct={pct} />
         </div>
       </div>
-      <div className="flex flex-col items-center gap-0.5 text-[10px] opacity-70 w-10">
-        <span>{formatAudioTime(current)}</span>
-        <span>{formatAudioTime(duration)}</span>
-      </div>
+      <span className="w-10 text-center text-xs font-medium text-white/80 tabular-nums shrink-0">
+        {playing ? formatAudioTime(current) : formatAudioTime(duration)}
+      </span>
       <audio ref={audioRef} src={url} preload="metadata" />
     </div>
   )

@@ -30,6 +30,7 @@ export default function Chat() {
   const [pendingFile, setPendingFile] = useState(null)
   const [pendingType, setPendingType] = useState(null)
   const [pendingPreview, setPendingPreview] = useState('')
+  const [voiceState, setVoiceState] = useState('idle')
   const [typingUsers, setTypingUsers] = useState([])
   const [replyTo, setReplyTo] = useState(null)
   const [blocked, setBlocked] = useState(false)
@@ -570,24 +571,26 @@ export default function Chat() {
             onChange={handleFile}
             className="hidden"
           />
-          <button type="button" onClick={() => fileRef.current?.click()} disabled={loading} className="w-11 h-11 rounded-full bg-[#111] hover:bg-white/10 border border-white/20 flex items-center justify-center transition shrink-0 disabled:opacity-40" title="إرفاق صورة أو فيديو أو صوت">
+          <button type="button" onClick={() => fileRef.current?.click()} disabled={loading || voiceState !== 'idle'} className={`w-11 h-11 rounded-full bg-[#111] hover:bg-white/10 border border-white/20 flex items-center justify-center transition shrink-0 disabled:opacity-40 ${voiceState !== 'idle' ? 'hidden' : ''}`} title="إرفاق صورة أو فيديو أو صوت">
             <Paperclip size={20} className="text-white" />
           </button>
 
-          <div className="shrink-0"><VoiceRecorder onRecord={handleVoice} disabled={loading || pendingFile} /></div>
+          <div className={voiceState !== 'idle' ? 'flex-1 min-w-0' : 'shrink-0'}>
+            <VoiceRecorder onRecord={handleVoice} onStateChange={setVoiceState} disabled={loading || pendingFile} />
+          </div>
 
           <input
             value={text}
             onChange={e => setText(e.target.value)}
             placeholder={loading ? 'جارٍ الإرسال...' : (pendingFile ? 'اضف تعليقًا (اختياري)...' : 'رسالة...')}
-            disabled={loading}
-            className="flex-1 rounded-2xl px-4 py-3 min-w-0 disabled:opacity-60"
+            disabled={loading || voiceState !== 'idle'}
+            className={`flex-1 rounded-2xl px-4 py-3 min-w-0 disabled:opacity-60 ${voiceState !== 'idle' ? 'hidden' : ''}`}
           />
 
           <button
             type="submit"
-            disabled={loading || (!text.trim() && !pendingFile)}
-            className="w-11 h-11 rounded-full gradient-bg disabled:opacity-40 transition flex items-center justify-center shrink-0"
+            disabled={loading || (!text.trim() && !pendingFile) || voiceState !== 'idle'}
+            className={`w-11 h-11 rounded-full gradient-bg disabled:opacity-40 transition flex items-center justify-center shrink-0 ${voiceState !== 'idle' ? 'hidden' : ''}`}
           >
             <Send size={20} />
           </button>
