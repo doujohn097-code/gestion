@@ -280,7 +280,7 @@ export default function Profile() {
 
       <div className="relative px-5 sm:px-6 -mt-16 flex flex-col items-center text-center">
         <div className="relative">
-          <div className="rounded-full ring-4 ring-black overflow-hidden border border-white/20 shadow-xl bg-[#111]">
+          <div className="rounded-full ring-4 ring-black border border-white/20 shadow-xl bg-[#111] p-1">
             <Avatar src={displayPic} name={target.fullName} size={128} online={online && !isMe} />
           </div>
           {isMe && editMode && (

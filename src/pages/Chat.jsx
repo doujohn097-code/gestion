@@ -331,9 +331,14 @@ export default function Chat() {
   const isAdmin = group.createdBy === user.uid
   const activeStatus = isDirect ? formatActiveStatus({ online, lastSeen }) : ''
 
+  useEffect(() => {
+    if (!groupId || !user?.uid || !group) return
+    updateDoc(doc(db, 'groups', groupId), { [`lastReadAt.${user.uid}`]: Timestamp.now() }).catch(() => {})
+  }, [groupId, user.uid, group])
+
   return (
     <div className="h-screen max-h-screen w-full bg-black flex flex-col overflow-hidden" dir="rtl">
-      <header className="glass-strong px-4 py-3 flex items-center justify-between shrink-0 border-b border-white/10">
+      <header className="relative z-50 glass-strong px-4 py-3 flex items-center justify-between shrink-0 border-b border-white/10">
         <div className="flex items-center gap-3 min-w-0">
           <button onClick={() => navigate('/')} className="w-10 h-10 rounded-full bg-[#111] hover:bg-white/10 border border-white/20 flex items-center justify-center transition shrink-0">
             <ChevronRight size={22} className="text-white" />
@@ -361,16 +366,21 @@ export default function Chat() {
             <MoreVertical size={20} className="text-white" />
           </button>
           {menuOpen && (
-            <div className="absolute left-0 top-full mt-2 w-48 glass-strong rounded-2xl overflow-hidden z-20 text-sm border border-white/10" dir="rtl">
+            <div className="absolute left-0 top-full mt-2 w-48 glass-strong rounded-2xl overflow-hidden z-[60] text-sm border border-white/10 shadow-2xl" dir="rtl">
               {isDirect ? (
-                <button onClick={() => { toggleBlock(); setMenuOpen(false) }} className="w-full text-right px-4 py-3 hover:bg-[#0a0a0a] flex items-center gap-2 text-white">
-                  <Ban size={16} /> {blocked ? 'إلغاء الحظر' : 'حظر المستخدم'}
-                </button>
+                <>
+                  <button onClick={() => { toggleBlock(); setMenuOpen(false) }} className="w-full text-right px-4 py-3 hover:bg-[#0a0a0a] flex items-center gap-2 text-white">
+                    <Ban size={16} /> {blocked ? 'إلغاء الحظر' : 'حظر المستخدم'}
+                  </button>
+                  <button onClick={() => { deleteGroup(); setMenuOpen(false) }} className="w-full text-right px-4 py-3 hover:bg-white/10 text-white flex items-center gap-2"><Trash2 size={16} /> حذف المحادثة</button>
+                </>
               ) : (
-                <button onClick={() => { setShowAdd(true); setMenuOpen(false) }} className="w-full text-right px-4 py-3 hover:bg-[#0a0a0a] flex items-center gap-2 text-white"><UserPlus size={16} /> إضافة عضو</button>
+                <>
+                  <button onClick={() => { setShowAdd(true); setMenuOpen(false) }} className="w-full text-right px-4 py-3 hover:bg-[#0a0a0a] flex items-center gap-2 text-white"><UserPlus size={16} /> إضافة عضو</button>
+                  {isAdmin && <button onClick={() => { deleteGroup(); setMenuOpen(false) }} className="w-full text-right px-4 py-3 hover:bg-white/10 text-white flex items-center gap-2"><Trash2 size={16} /> حذف المجموعة</button>}
+                  <button onClick={() => { leaveGroup(); setMenuOpen(false) }} className="w-full text-right px-4 py-3 hover:bg-[#0a0a0a] flex items-center gap-2 text-white/70"><LogOut size={16} /> مغادرة</button>
+                </>
               )}
-              {!isDirect && isAdmin && <button onClick={() => { deleteGroup(); setMenuOpen(false) }} className="w-full text-right px-4 py-3 hover:bg-white/10 text-white flex items-center gap-2"><Trash2 size={16} /> حذف</button>}
-              <button onClick={() => { leaveGroup(); setMenuOpen(false) }} className="w-full text-right px-4 py-3 hover:bg-[#0a0a0a] flex items-center gap-2 text-white/70"><LogOut size={16} /> مغادرة</button>
             </div>
           )}
         </div>

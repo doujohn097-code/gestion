@@ -31,25 +31,34 @@ function ChatItem({ group, user, onClick }) {
 
   const title = isDirect ? (member?.fullName || 'مجهول') : (group.name || 'محادثة')
   const image = isDirect ? (member?.profilePic || '') : (group.image || '')
-  const subtitle = group.lastMessage ? (
-    <>
-      <span className="text-white">{group.lastSender?.fullName || ''}:</span>{' '}
-      {group.lastMessage.type === 'text' ? group.lastMessage.content : group.lastMessage.type === 'image' ? 'صورة' : group.lastMessage.type === 'video' ? 'فيديو' : group.lastMessage.type === 'audio' ? 'رسالة صوتية' : 'ملف'}
-    </>
-  ) : (isDirect ? 'ابدأ المحادثة' : 'لا توجد رسائل بعد')
   const active = isDirect ? formatActiveStatus({ online, lastSeen }) : `${group.members?.length || 0} عضو`
 
+  const lastRead = group.lastReadAt?.[user.uid]
+  const lastMsgTs = group.lastMessage?.createdAt?.seconds || 0
+  const lastReadTs = lastRead?.seconds || 0
+  const isUnread = group.lastMessage && group.lastMessage.senderId !== user.uid && lastMsgTs > lastReadTs
+
+  const subtitle = group.lastMessage ? (
+    <>
+      <span className={`truncate ${isUnread ? 'text-white font-medium' : 'text-white/50'}`}>
+        {group.lastSender?.fullName && <span className="text-white/80">{group.lastSender.fullName}:</span>}{' '}
+        {group.lastMessage.type === 'text' ? group.lastMessage.content : group.lastMessage.type === 'image' ? 'صورة' : group.lastMessage.type === 'video' ? 'فيديو' : group.lastMessage.type === 'audio' ? 'رسالة صوتية' : 'ملف'}
+      </span>
+    </>
+  ) : (isDirect ? 'ابدأ المحادثة' : 'لا توجد رسائل بعد')
+
   return (
-    <div onClick={onClick} className="glass rounded-2xl p-3 flex items-center gap-3 cursor-pointer hover:bg-[#0a0a0a] hover:border-white/20 transition border border-transparent">
+    <div onClick={onClick} className={`rounded-2xl p-3 flex items-center gap-3 cursor-pointer transition border ${isUnread ? 'bg-white/[0.08] border-white/20 hover:bg-white/10' : 'glass hover:bg-[#0a0a0a] hover:border-white/20 border-transparent'}`}>
       <Avatar src={image} name={title} size={52} online={isDirect && online} />
       <div className="flex-1 min-w-0">
         <div className="flex justify-between items-center gap-2">
-          <h3 className="font-semibold truncate">{title}</h3>
-          <span className="text-xs text-white/40 shrink-0">{formatListTime(group.lastMessage?.createdAt)}</span>
+          <h3 className={`truncate ${isUnread ? 'font-bold text-white' : 'font-semibold'}`}>{title}</h3>
+          <span className={`text-xs shrink-0 ${isUnread ? 'text-green-400 font-medium' : 'text-white/40'}`}>{formatListTime(group.lastMessage?.createdAt)}</span>
         </div>
         <div className="flex items-center gap-2 mt-0.5">
-          <p className="text-sm text-white/50 truncate flex-1">{subtitle}</p>
-          {isDirect && active && <span className="text-[11px] text-green-400 shrink-0">{active}</span>}
+          <p className="text-sm truncate flex-1">{subtitle}</p>
+          {isUnread && <span className="unread-dot shrink-0" />}
+          {!isUnread && isDirect && active && <span className="text-[11px] text-white/40 shrink-0">{active}</span>}
         </div>
       </div>
     </div>

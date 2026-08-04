@@ -3,7 +3,12 @@ import { Avatar } from './Avatar'
 import { formatMessageTime } from '../utils/formatTime'
 import { Play, Pause, FileText, Download, X, Reply, Heart, Trash2 } from 'lucide-react'
 
-const EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '😡']
+const EMOJIS = [
+  '❤️', '🔥', '👍', '😂', '😮', '😢', '😡', '😎', '🥳', '🤔',
+  '👏', '🙏', '😍', '🥰', '👀', '🤣', '😭', '😤', '🤯', '✨',
+  '🎉', '💯', '❗', '❓', '🌹', '🎁', '🕊️', '☕', '🤝', '💪',
+  '🏆', '🌟', '⚡', '🔥', '❄️', '🌈', '✅', '⛔', '🚀', '📌',
+]
 
 function formatAudioTime(s) {
   if (!isFinite(s) || isNaN(s)) return '0:00'
@@ -144,10 +149,37 @@ function replyPreviewText(reply) {
 }
 
 function MessageMenu({ x, y, onClose, onReply, onReact, onDelete }) {
+  const [pos, setPos] = useState({ x, y })
+  const menuRef = useRef(null)
+
+  useEffect(() => {
+    const vw = window.innerWidth
+    const vh = window.innerHeight
+    const menu = menuRef.current
+    let cx = x
+    let cy = y
+    if (menu) {
+      const rect = menu.getBoundingClientRect()
+      const pad = 12
+      const minX = rect.width / 2 + pad
+      const maxX = vw - rect.width / 2 - pad
+      const minY = rect.height + pad
+      const maxY = vh - pad
+      cx = Math.max(minX, Math.min(maxX, x))
+      cy = Math.max(minY, Math.min(maxY, y))
+    }
+    setPos({ x: cx, y: cy })
+  }, [x, y])
+
   return (
     <>
-      <div className="fixed inset-0 z-40" onClick={onClose} />
-      <div className="message-menu glass-strong" style={{ left: x, top: y }} onClick={(e) => e.stopPropagation()}>
+      <div className="fixed inset-0 z-[60]" onClick={onClose} />
+      <div
+        ref={menuRef}
+        className="message-menu glass-strong emoji-font"
+        style={{ left: pos.x, top: pos.y }}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="message-menu-emojis">
           {EMOJIS.map(emoji => (
             <button key={emoji} onClick={() => onReact(emoji)} className="message-menu-emoji">{emoji}</button>
@@ -170,11 +202,15 @@ export function MessageBubble({ msg, user, isMe, readBy = [], currentUserId, onR
   const [menuPos, setMenuPos] = useState({ x: 0, y: 0 })
   const [showHeart, setShowHeart] = useState(false)
   const [heartPos, setHeartPos] = useState({ x: 0, y: 0 })
+  const [translateX, setTranslateX] = useState(0)
+  const [swiping, setSwiping] = useState(false)
   const longPressRef = useRef(null)
   const touchStartRef = useRef(null)
   const longPressTriggered = useRef(false)
+  const swipeTriggered = useRef(false)
   const clickCountRef = useRef(0)
   const clickTimerRef = useRef(null)
+  const bubbleRef = useRef(null)
   const name = user?.fullName || 'مجهول'
   const time = formatMessageTime(msg.createdAt)
 
@@ -191,29 +227,56 @@ export function MessageBubble({ msg, user, isMe, readBy = [], currentUserId, onR
 
   const showMenuAt = (x, y) => { longPressTriggered.current = true; setMenuPos({ x, y }); setMenuOpen(true) }
 
-  const startLongPress = (e) => {
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY
+  const startTouch = (e) => {
+    const touch = e.touches ? e.touches[0] : e
+    if (!touch) return
     longPressTriggered.current = false
-    touchStartRef.current = { x: clientX, y: clientY, time: Date.now() }
+    swipeTriggered.current = false
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() }
     longPressRef.current = setTimeout(() => {
       longPressRef.current = null
-      showMenuAt(clientX, clientY)
-    }, 600)
+      showMenuAt(touch.clientX, touch.clientY)
+    }, 500)
   }
 
-  const moveLongPress = (e) => {
+  const moveTouch = (e) => {
     if (!touchStartRef.current) return
-    const x = e.touches ? e.touches[0].clientX : e.clientX
-    const y = e.touches ? e.touches[0].clientY : e.clientY
-    const dx = x - touchStartRef.current.x
-    const dy = y - touchStartRef.current.y
-    if (Math.hypot(dx, dy) > 12) cancelLongPress()
+    const touch = e.touches ? e.touches[0] : e
+    const dx = touch.clientX - touchStartRef.current.x
+    const dy = touch.clientY - touchStartRef.current.y
+
+    // Horizontal swipe reply
+    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 12) {
+      if (longPressRef.current) { clearTimeout(longPressRef.current); longPressRef.current = null }
+      setSwiping(true)
+      setTranslateX(dx * 0.5)
+      swipeTriggered.current = Math.abs(dx) > 70
+      if (Math.abs(dx) > 20) e.preventDefault?.()
+      return
+    }
+
+    if (Math.hypot(dx, dy) > 10) cancelTouch()
   }
 
-  const cancelLongPress = () => {
+  const endTouch = (e) => {
+    if (swiping && swipeTriggered.current) {
+      setTranslateX(0)
+      setSwiping(false)
+      swipeTriggered.current = false
+      touchStartRef.current = null
+      handleReply()
+      return
+    }
+    cancelTouch()
+    setTranslateX(0)
+    setSwiping(false)
+  }
+
+  const cancelTouch = () => {
     if (longPressRef.current) { clearTimeout(longPressRef.current); longPressRef.current = null }
     touchStartRef.current = null
+    setSwiping(false)
+    setTranslateX(0)
   }
 
   const onContextMenu = (e) => {
@@ -292,6 +355,12 @@ export function MessageBubble({ msg, user, isMe, readBy = [], currentUserId, onR
     return <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words" style={{ overflowWrap: 'anywhere' }}>{msg.content}</p>
   }
 
+  const swipeIcon = (
+    <div className={`absolute top-1/2 -translate-y-1/2 text-white/40 pointer-events-none transition-opacity ${isMe ? 'right-full mr-3' : 'left-full ml-3'}`} style={{ opacity: swiping && swipeTriggered.current ? 1 : 0 }}>
+      <Reply size={24} />
+    </div>
+  )
+
   return (
     <>
       <div
@@ -309,66 +378,72 @@ export function MessageBubble({ msg, user, isMe, readBy = [], currentUserId, onR
           >
             {name}
           </span>
-          <div
-            className={`message-bubble ${isMe ? 'sent' : 'received'} relative`}
-            onTouchStart={startLongPress}
-            onTouchMove={moveLongPress}
-            onTouchEnd={cancelLongPress}
-            onMouseDown={startLongPress}
-            onMouseUp={cancelLongPress}
-            onMouseLeave={cancelLongPress}
-            onContextMenu={onContextMenu}
-            onClick={onBubbleClick}
-          >
-            {msg.replyTo && (
-              <div className="reply-preview">
-                <Reply size={12} className="shrink-0 mt-0.5" />
-                <div className="min-w-0">
-                  <p className="text-[11px] opacity-80 truncate">{msg.replyTo.senderName}</p>
-                  <p className="text-[12px] opacity-70 truncate">{replyPreviewText(msg.replyTo)}</p>
+          <div className="relative">
+            {swipeIcon}
+            <div
+              ref={bubbleRef}
+              className={`message-bubble ${isMe ? 'sent' : 'received'} relative`}
+              style={{ transform: `translateX(${translateX}px)`, transition: swiping ? 'none' : 'transform 0.25s ease' }}
+              onTouchStart={startTouch}
+              onTouchMove={moveTouch}
+              onTouchEnd={endTouch}
+              onMouseDown={startTouch}
+              onMouseMove={moveTouch}
+              onMouseUp={endTouch}
+              onMouseLeave={cancelTouch}
+              onContextMenu={onContextMenu}
+              onClick={onBubbleClick}
+            >
+              {msg.replyTo && (
+                <div className="reply-preview">
+                  <Reply size={12} className="shrink-0 mt-0.5" />
+                  <div className="min-w-0">
+                    <p className="text-[11px] opacity-80 truncate">{msg.replyTo.senderName}</p>
+                    <p className="text-[12px] opacity-70 truncate">{replyPreviewText(msg.replyTo)}</p>
+                  </div>
+                </div>
+              )}
+              <div className="flex flex-col gap-1" dir="rtl">
+                {msg.content && msg.type !== 'text' && (
+                  <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words mb-1" style={{ overflowWrap: 'anywhere' }}>{msg.content}</p>
+                )}
+                {renderContent()}
+                <div className={`flex items-center gap-1.5 mt-1 ${isMe ? 'flex-row-reverse' : 'flex-row'}`} dir="ltr">
+                  <span className="text-[10px] opacity-60">{time}</span>
+                  {reactionList.length > 0 && (
+                    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                      {reactionList.map((r) => (
+                        <button
+                          key={r.emoji}
+                          onClick={() => handleReaction(r.emoji)}
+                          className={`reaction-pill emoji-font ${r.me ? 'active' : ''}`}
+                        >
+                          <span>{r.emoji}</span>
+                          {r.count > 1 && <span className="text-[10px]">{r.count}</span>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {readBy.length > 0 && (
+                    <div className="flex -space-x-1.5 rtl:space-x-reverse" dir="ltr">
+                      {readBy.slice(0, 4).map((u, i) => (
+                        <div key={i} className="w-[14px] h-[14px] rounded-full overflow-hidden border border-black ring-1 ring-white/20" title={u.fullName}>
+                          <Avatar src={u.profilePic} name={u.fullName} size={14} />
+                        </div>
+                      ))}
+                      {readBy.length > 4 && (
+                        <span className="text-[10px] text-white/70 ml-1">+{readBy.length - 4}</span>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
-            )}
-            <div className="flex flex-col gap-1" dir="rtl">
-              {msg.content && msg.type !== 'text' && (
-                <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words mb-1" style={{ overflowWrap: 'anywhere' }}>{msg.content}</p>
+              {showHeart && (
+                <div className="heart-anim" style={{ left: heartPos.x, top: heartPos.y }}>
+                  <Heart size={48} fill="#ff4d6d" color="#ff4d6d" />
+                </div>
               )}
-              {renderContent()}
-              <div className={`flex items-center gap-1.5 mt-1 ${isMe ? 'flex-row-reverse' : 'flex-row'}`} dir="ltr">
-                <span className="text-[10px] opacity-60">{time}</span>
-                {reactionList.length > 0 && (
-                  <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                    {reactionList.map((r) => (
-                      <button
-                        key={r.emoji}
-                        onClick={() => handleReaction(r.emoji)}
-                        className={`reaction-pill ${r.me ? 'active' : ''}`}
-                      >
-                        <span>{r.emoji}</span>
-                        {r.count > 1 && <span className="text-[10px]">{r.count}</span>}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {readBy.length > 0 && (
-                  <div className="flex -space-x-1.5 rtl:space-x-reverse" dir="ltr">
-                    {readBy.slice(0, 4).map((u, i) => (
-                      <div key={i} className="w-[14px] h-[14px] rounded-full overflow-hidden border border-black ring-1 ring-white/20" title={u.fullName}>
-                        <Avatar src={u.profilePic} name={u.fullName} size={14} />
-                      </div>
-                    ))}
-                    {readBy.length > 4 && (
-                      <span className="text-[10px] text-white/70 ml-1">+{readBy.length - 4}</span>
-                    )}
-                  </div>
-                )}
-              </div>
             </div>
-            {showHeart && (
-              <div className="heart-anim" style={{ left: heartPos.x, top: heartPos.y }}>
-                <Heart size={48} fill="#ff4d6d" color="#ff4d6d" />
-              </div>
-            )}
           </div>
         </div>
       </div>
