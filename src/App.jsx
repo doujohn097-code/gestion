@@ -15,6 +15,7 @@ import DemoChatList from './pages/DemoChatList'
 import DemoProfile from './pages/DemoProfile'
 import DemoUsers from './pages/DemoUsers'
 import DemoRequests from './pages/DemoRequests'
+import Splash from './components/Splash'
 
 const AuthContext = createContext(null)
 export const useAuth = () => useContext(AuthContext)
@@ -94,24 +95,27 @@ function App() {
   }
 
   return (
-    <AuthLoader>
-      <HashRouter>
-        <Routes>
-          <Route path="/" element={<PrivateRoute><ChatList /></PrivateRoute>} />
-          <Route path="/login" element={<GuestRoute><Login /></GuestRoute>} />
-          <Route path="/signup" element={<GuestRoute><Signup /></GuestRoute>} />
-          <Route path="/chat/:groupId" element={<PrivateRoute><Chat /></PrivateRoute>} />
-          <Route path="/profile/:uid" element={<PrivateRoute><Profile /></PrivateRoute>} />
-          <Route path="/users" element={<PrivateRoute><Users /></PrivateRoute>} />
-          <Route path="/requests" element={<PrivateRoute><Requests /></PrivateRoute>} />
-          <Route path="/demo" element={<Demo />} />
-          <Route path="/demo/chatlist" element={<DemoChatList />} />
-          <Route path="/demo/profile" element={<DemoProfile />} />
-          <Route path="/demo/users" element={<DemoUsers />} />
-          <Route path="/demo/requests" element={<DemoRequests />} />
-        </Routes>
-      </HashRouter>
-    </AuthLoader>
+    <>
+      <Splash />
+      <AuthLoader>
+        <HashRouter>
+          <Routes>
+            <Route path="/" element={<PrivateRoute><ChatList /></PrivateRoute>} />
+            <Route path="/login" element={<GuestRoute><Login /></GuestRoute>} />
+            <Route path="/signup" element={<GuestRoute><Signup /></GuestRoute>} />
+            <Route path="/chat/:groupId" element={<PrivateRoute><Chat /></PrivateRoute>} />
+            <Route path="/profile/:uid" element={<PrivateRoute><Profile /></PrivateRoute>} />
+            <Route path="/users" element={<PrivateRoute><Users /></PrivateRoute>} />
+            <Route path="/requests" element={<PrivateRoute><Requests /></PrivateRoute>} />
+            <Route path="/demo" element={<Demo />} />
+            <Route path="/demo/chatlist" element={<DemoChatList />} />
+            <Route path="/demo/profile" element={<DemoProfile />} />
+            <Route path="/demo/users" element={<DemoUsers />} />
+            <Route path="/demo/requests" element={<DemoRequests />} />
+          </Routes>
+        </HashRouter>
+      </AuthLoader>
+    </>
   )
 }
 
