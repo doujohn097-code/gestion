@@ -24,6 +24,9 @@ export default function Chat() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [addUsername, setAddUsername] = useState('')
   const [showAdd, setShowAdd] = useState(false)
+  const [pendingFile, setPendingFile] = useState(null)
+  const [pendingType, setPendingType] = useState(null)
+  const [pendingPreview, setPendingPreview] = useState('')
   const bottomRef = useRef(null)
   const fileRef = useRef()
 
@@ -87,22 +90,35 @@ export default function Chat() {
     await updateDoc(doc(db, 'groups', groupId), { lastMessage: { ...newMsg, createdAt: serverTimestamp() } })
     sendNotification(finalContent, type)
     setText('')
+    clearPendingFile()
   }
 
-  const handleSend = (e) => {
+  const clearPendingFile = () => {
+    if (pendingPreview) URL.revokeObjectURL(pendingPreview)
+    setPendingFile(null)
+    setPendingType(null)
+    setPendingPreview('')
+    if (fileRef.current) fileRef.current.value = ''
+  }
+
+  const handleSend = async (e) => {
     e.preventDefault()
-    if (!text.trim() || loading) return
-    sendMessage(text.trim(), 'text')
+    if (loading) return
+    if (pendingFile) {
+      await uploadAndSend(pendingFile, pendingType, text.trim())
+    } else if (text.trim()) {
+      sendMessage(text.trim(), 'text')
+    }
   }
 
-  const uploadAndSend = async (file, type) => {
+  const uploadAndSend = async (file, type, caption = '') => {
     if (!file) return
     setLoading(true)
     setUploadErr('')
     try {
       const folder = type === 'audio' ? `groups/${groupId}/audio` : `groups/${groupId}/media`
       const url = await uploadFile(file, folder)
-      await sendMessage('', type, url, file.name)
+      await sendMessage(caption, type, url, file.name)
     } catch (e) {
       console.error(e)
       setUploadErr('فشل الرفع. تأكد من أن R2 عام وCORS مفعّل.')
@@ -114,7 +130,14 @@ export default function Chat() {
     const file = e.target.files?.[0]
     if (!file) return
     const type = getFileType(file)
-    uploadAndSend(file, type)
+    if (pendingPreview) URL.revokeObjectURL(pendingPreview)
+    setPendingFile(file)
+    setPendingType(type)
+    if (type === 'image' || type === 'video') {
+      setPendingPreview(URL.createObjectURL(file))
+    } else {
+      setPendingPreview('')
+    }
     if (fileRef.current) fileRef.current.value = ''
   }
 
@@ -212,6 +235,31 @@ export default function Chat() {
         <div className="px-4 py-2 text-xs text-red-300 bg-red-900/20 border-t border-red-500/20" dir="rtl">{uploadErr}</div>
       )}
 
+      {pendingFile && (
+        <div className="glass-strong px-4 py-3 border-t border-white/10" dir="rtl">
+          <div className="flex items-start gap-3">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-white/70 mb-2 truncate">{pendingFile.name}</p>
+              {pendingType === 'image' && pendingPreview && (
+                <img src={pendingPreview} alt="preview" className="max-h-36 max-w-full rounded-xl object-cover border border-white/10" />
+              )}
+              {pendingType === 'video' && pendingPreview && (
+                <video src={pendingPreview} controls className="max-h-36 max-w-full rounded-xl border border-white/10" preload="metadata" />
+              )}
+              {pendingType === 'audio' && (
+                <div className="flex items-center gap-2 text-white/60 text-sm bg-white/5 rounded-xl px-3 py-2">
+                  <span className="w-2 h-2 rounded-full bg-white/60 animate-pulse" />
+                  ملف صوتي — أضف تعليقًا أو أرسل
+                </div>
+              )}
+            </div>
+            <button type="button" onClick={clearPendingFile} className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center shrink-0" title="إزالة">
+              <X size={16} className="text-white" />
+            </button>
+          </div>
+        </div>
+      )}
+
       <form onSubmit={handleSend} className="glass-strong p-3 flex items-center gap-2 shrink-0 border-t border-white/10">
         <input
           type="file"
@@ -224,19 +272,19 @@ export default function Chat() {
           <Paperclip size={20} className="text-white" />
         </button>
 
-        <div className="shrink-0"><VoiceRecorder onRecord={handleVoice} disabled={loading} /></div>
+        <div className="shrink-0"><VoiceRecorder onRecord={handleVoice} disabled={loading || pendingFile} /></div>
 
         <input
           value={text}
           onChange={e => setText(e.target.value)}
-          placeholder={loading ? 'جارٍ الإرسال...' : 'رسالة...'}
+          placeholder={loading ? 'جارٍ الإرسال...' : (pendingFile ? 'اضف تعليقًا (اختياري)...' : 'رسالة...')}
           disabled={loading}
           className="flex-1 rounded-2xl px-4 py-3 min-w-0 disabled:opacity-60"
         />
 
         <button
           type="submit"
-          disabled={!text.trim() || loading}
+          disabled={loading || (!text.trim() && !pendingFile)}
           className="w-11 h-11 rounded-full gradient-bg disabled:opacity-40 transition flex items-center justify-center shrink-0"
         >
           <Send size={20} />
