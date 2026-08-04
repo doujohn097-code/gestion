@@ -13,7 +13,7 @@ const users = [
 export default function DemoUsers() {
   const navigate = useNavigate()
   return (
-    <DemoLayout>
+    <DemoLayout unreadCount={2} requestCount={1}>
       <div className="px-4 sm:px-5 py-3">
         <div className="relative">
           <Search size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40" />

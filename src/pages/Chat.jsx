@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { doc, onSnapshot, collection, query, orderBy, addDoc, setDoc, serverTimestamp, updateDoc, arrayUnion, arrayRemove, getDoc, getDocs, deleteDoc, Timestamp } from 'firebase/firestore'
+import { doc, onSnapshot, collection, query, orderBy, addDoc, setDoc, serverTimestamp, updateDoc, arrayUnion, arrayRemove, getDoc, deleteDoc, Timestamp } from 'firebase/firestore'
 import { getIdToken } from 'firebase/auth'
 import { auth, db } from '../firebase'
 import { useAuth } from '../App'
@@ -24,8 +24,9 @@ export default function Chat() {
   const [error, setError] = useState('')
   const [uploadErr, setUploadErr] = useState('')
   const [menuOpen, setMenuOpen] = useState(false)
-  const [addUsername, setAddUsername] = useState('')
   const [showAdd, setShowAdd] = useState(false)
+  const [friends, setFriends] = useState([])
+  const [toast, setToast] = useState(null)
   const [pendingFile, setPendingFile] = useState(null)
   const [pendingType, setPendingType] = useState(null)
   const [pendingPreview, setPendingPreview] = useState('')
@@ -37,6 +38,8 @@ export default function Chat() {
   const typingTimerRef = useRef(null)
   const clearTypingTimerRef = useRef(null)
   const readMarkedRef = useRef(null)
+  const fromReqsRef = useRef([])
+  const toReqsRef = useRef([])
 
   const isDirect = group?.type === 'direct' || group?.isDirect
   const otherUser = isDirect ? Object.values(members).find(m => m?.uid !== user.uid) : null
@@ -98,6 +101,29 @@ export default function Chat() {
     }
     fetchMembers()
   }, [group])
+
+  useEffect(() => {
+    if (!user?.uid) return
+    const loadFriends = async () => {
+      const friendIds = new Set()
+      ;[...fromReqsRef.current, ...toReqsRef.current].forEach(d => {
+        const data = d.data ? d.data() : d
+        const fid = data.from === user.uid ? data.to : data.from
+        if (fid && fid !== user.uid) friendIds.add(fid)
+      })
+      const list = []
+      await Promise.all([...friendIds].map(async fid => {
+        const snap = await getDoc(doc(db, 'users', fid))
+        if (snap.exists()) list.push({ uid: snap.id, ...snap.data() })
+      }))
+      setFriends(list)
+    }
+    const q1 = query(collection(db, 'friendRequests'), where('from', '==', user.uid), where('status', '==', 'accepted'))
+    const q2 = query(collection(db, 'friendRequests'), where('to', '==', user.uid), where('status', '==', 'accepted'))
+    const unsub1 = onSnapshot(q1, (snap) => { fromReqsRef.current = snap.docs; loadFriends() })
+    const unsub2 = onSnapshot(q2, (snap) => { toReqsRef.current = snap.docs; loadFriends() })
+    return () => { unsub1(); unsub2() }
+  }, [user])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -259,15 +285,36 @@ export default function Chat() {
   const handleReact = async (msg, emoji) => {
     try {
       const current = msg.reactions || {}
-      const users = current[emoji] || {}
-      if (users[user.uid]) {
-        const { [user.uid]: _, ...rest } = users
-        const next = { ...current, [emoji]: rest }
-        if (Object.keys(next[emoji]).length === 0) delete next[emoji]
-        await updateDoc(doc(db, 'groups', groupId, 'messages', msg.id), { reactions: next })
-      } else {
-        await updateDoc(doc(db, 'groups', groupId, 'messages', msg.id), {
-          reactions: { ...current, [emoji]: { ...users, [user.uid]: true } }
+      const userReactions = {}
+      Object.entries(current).forEach(([e, users = {}]) => {
+        if (users[user.uid]) userReactions[e] = true
+      })
+
+      const next = {}
+      Object.entries(current).forEach(([e, users = {}]) => {
+        const rest = Object.fromEntries(Object.entries(users).filter(([uid]) => uid !== user.uid))
+        if (Object.keys(rest).length > 0) next[e] = rest
+      })
+
+      const hadThisEmoji = userReactions[emoji]
+      if (!hadThisEmoji) {
+        next[emoji] = { ...(current[emoji] || {}), [user.uid]: true }
+      }
+
+      await updateDoc(doc(db, 'groups', groupId, 'messages', msg.id), { reactions: next })
+
+      // Reflect the latest activity (reaction) in the chat list preview.
+      const isReactionNow = !hadThisEmoji
+      if (isReactionNow) {
+        await updateDoc(doc(db, 'groups', groupId), {
+          lastMessage: {
+            type: 'reaction',
+            content: emoji,
+            senderId: user.uid,
+            senderName: profile?.fullName || '',
+            messageId: msg.id,
+            createdAt: serverTimestamp(),
+          },
         })
       }
     } catch (e) { console.warn('Reaction failed', e) }
@@ -278,17 +325,23 @@ export default function Chat() {
     try { await deleteDoc(doc(db, 'groups', groupId, 'messages', msg.id)) } catch (e) { console.warn('Delete failed', e) }
   }
 
-  const addMember = async (e) => {
-    e.preventDefault()
-    if (!addUsername.trim()) return
-    const clean = addUsername.trim().toLowerCase()
-    const q = query(collection(db, 'users'), where('username', '==', clean))
-    const res = await getDocs(q)
-    if (res.empty) { alert('المستخدم غير موجود'); return }
-    const targetUser = res.docs[0].data()
-    await updateDoc(doc(db, 'groups', groupId), { members: arrayUnion(targetUser.uid) })
-    setAddUsername('')
-    setShowAdd(false)
+  const showToast = (message) => {
+    setToast(message)
+    setTimeout(() => setToast(null), 2500)
+  }
+
+  const addMember = async (friend) => {
+    if (!group?.members || group.members.includes(friend.uid)) {
+      showToast(`${friend.fullName} موجود في المجموعة بالفعل`)
+      return
+    }
+    try {
+      await updateDoc(doc(db, 'groups', groupId), { members: arrayUnion(friend.uid) })
+      showToast(`تمت إضافة ${friend.fullName}`)
+    } catch (e) {
+      console.error(e)
+      showToast('تعذّر إضافة العضو')
+    }
   }
 
   const leaveGroup = async () => {
@@ -389,10 +442,29 @@ export default function Chat() {
       </header>
 
       {showAdd && !isDirect && (
-        <div className="px-4 py-2 bg-[#0a0a0a] border-b border-white/20 flex gap-2">
-          <input value={addUsername} onChange={e => setAddUsername(e.target.value)} placeholder="اسم المستخدم للإضافة" className="flex-1 rounded-xl px-3 py-2 text-sm" />
-          <button onClick={addMember} className="px-4 py-2 rounded-xl gradient-bg text-sm font-bold text-black">إضافة</button>
-          <button onClick={() => setShowAdd(false)} className="p-2 rounded-xl bg-[#0a0a0a] neon-border"><X size={16} className="text-white" /></button>
+        <div className="px-4 py-3 bg-[#0a0a0a] border-b border-white/20">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-sm font-semibold text-white">إضافة أصدقاء إلى المجموعة</h4>
+            <button onClick={() => setShowAdd(false)} className="p-1.5 rounded-full bg-white/10 hover:bg-white/20 transition"><X size={16} className="text-white" /></button>
+          </div>
+          <div className="max-h-52 overflow-y-auto grid grid-cols-3 sm:grid-cols-4 gap-2">
+            {friends.length === 0 ? (
+              <p className="text-white/40 text-sm col-span-full">لا يوجد أصدقاء لإضافتهم.</p>
+            ) : (
+              friends.map(f => (
+                <div key={f.uid} className="glass rounded-xl p-2 flex flex-col items-center text-center">
+                  <Avatar src={f.profilePic} name={f.fullName} size={44} />
+                  <p className="mt-2 text-xs font-semibold truncate w-full">{f.fullName}</p>
+                  <button
+                    onClick={() => addMember(f)}
+                    className="mt-2 w-full py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-medium transition"
+                  >
+                    إضافة
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
         </div>
       )}
 
@@ -520,6 +592,12 @@ export default function Chat() {
             <Send size={20} />
           </button>
         </form>
+      )}
+
+      {toast && (
+        <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl glass-strong border border-white/10 text-sm font-medium page-enter" dir="rtl">
+          {toast}
+        </div>
       )}
     </div>
   )

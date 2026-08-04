@@ -4,7 +4,7 @@ import DemoLayout from '../components/DemoLayout'
 
 export default function DemoRequests() {
   return (
-    <DemoLayout>
+    <DemoLayout unreadCount={2} requestCount={1}>
       <div className="flex-1 overflow-y-auto px-4 sm:px-5 pb-28 space-y-4">
         <div>
           <h3 className="text-sm font-semibold text-white/60 mb-2 flex items-center gap-2"><Inbox size={16} /> طلبات واردة</h3>

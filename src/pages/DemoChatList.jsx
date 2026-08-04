@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Avatar } from '../components/Avatar'
 import { Plus, Search, Users } from 'lucide-react'
 import DemoLayout from '../components/DemoLayout'
+import PullToRefresh from '../components/PullToRefresh'
 
 const groups = [
   { id: '1', name: 'فريق التصميم', image: '', lastMessage: { type: 'text', content: 'تمت المعاينة بنجاح.', createdAt: { seconds: Date.now()/1000 - 120 }, senderId: 'u1' }, lastSender: { fullName: 'أحمد' }, createdAt: { seconds: Date.now()/1000 - 3600 } },
@@ -18,8 +19,12 @@ function formatTime(ts) {
 
 export default function DemoChatList() {
   const navigate = useNavigate()
+  const handleRefresh = async () => {
+    await new Promise(resolve => setTimeout(resolve, 1200))
+  }
+
   return (
-    <DemoLayout>
+    <DemoLayout unreadCount={2} requestCount={1}>
       <div className="px-4 sm:px-5 py-3">
         <div className="relative">
           <Search size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40" />
@@ -27,7 +32,7 @@ export default function DemoChatList() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 sm:px-5 pb-28 space-y-3">
+      <PullToRefresh onRefresh={handleRefresh} contentClassName="px-4 sm:px-5 pb-28 space-y-3">
         {groups.map(g => (
           <div key={g.id} onClick={() => navigate('/demo')}
             className="glass rounded-2xl p-3 flex items-center gap-3 cursor-pointer hover:bg-[#0a0a0a] hover:border-white/20 transition border border-transparent">
@@ -44,7 +49,7 @@ export default function DemoChatList() {
             </div>
           </div>
         ))}
-      </div>
+      </PullToRefresh>
 
       <button onClick={() => {}} className="fixed bottom-20 right-4 sm:bottom-24 sm:right-6 w-14 h-14 rounded-full gradient-bg flex items-center justify-center shadow-lg hover:scale-105 transition z-30">
         <Plus size={28} />

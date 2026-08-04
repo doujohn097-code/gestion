@@ -486,6 +486,14 @@ input[type="file"] {
     #000;
 }
 
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
 .friends-scroll {
   width: max-content;
   animation: scroll-friends linear infinite;

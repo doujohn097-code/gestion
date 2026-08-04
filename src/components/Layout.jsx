@@ -1,10 +1,12 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../App'
 import { Avatar } from './Avatar'
 import { MessageSquare, Users, Bell, LogOut, User } from 'lucide-react'
 import { signOut } from 'firebase/auth'
 import { auth } from '../firebase'
+import { db } from '../firebase'
+import { collection, query, where, onSnapshot } from 'firebase/firestore'
 
 const nav = [
   { path: '/', label: 'المحادثات', icon: MessageSquare },
@@ -20,6 +22,35 @@ export default function Layout({ children }) {
   const displayName = profile?.fullName || user?.displayName || 'Gestion'
   const avatar = profile?.profilePic || user?.photoURL || ''
   const username = profile?.username || ''
+
+  const [unreadCount, setUnreadCount] = useState(0)
+  const [requestCount, setRequestCount] = useState(0)
+
+  useEffect(() => {
+    if (!user?.uid) return
+    const q = query(collection(db, 'groups'), where('members', 'array-contains', user.uid))
+    const unsub = onSnapshot(q, (snap) => {
+      let total = 0
+      snap.docs.forEach(d => {
+        const data = d.data()
+        const lastMessage = data.lastMessage
+        if (!lastMessage || lastMessage.senderId === user.uid) return
+        const lastRead = data.lastReadAt?.[user.uid]
+        const lastReadTs = lastRead?.seconds || 0
+        const lastMsgTs = lastMessage.createdAt?.seconds || 0
+        if (lastMsgTs > lastReadTs) total += 1
+      })
+      setUnreadCount(total)
+    })
+    return unsub
+  }, [user])
+
+  useEffect(() => {
+    if (!user?.uid) return
+    const q = query(collection(db, 'friendRequests'), where('to', '==', user.uid), where('status', '==', 'pending'))
+    const unsub = onSnapshot(q, (snap) => setRequestCount(snap.size))
+    return unsub
+  }, [user])
 
   const logout = () => signOut(auth)
 
@@ -43,7 +74,7 @@ export default function Layout({ children }) {
         </div>
       </header>
 
-      <main className="flex-1 min-h-0 overflow-y-auto relative">
+      <main className="flex-1 min-h-0 flex flex-col overflow-hidden relative">
         {children}
       </main>
 
@@ -52,14 +83,20 @@ export default function Layout({ children }) {
           {nav.map((item) => {
             const active = location.pathname === item.path
             const Icon = item.icon
+            const badge = item.path === '/' ? unreadCount : item.path === '/requests' ? requestCount : 0
             return (
               <Link
                 key={item.path}
                 to={item.path}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-full transition font-medium text-sm ${
+                className={`relative flex items-center gap-2 px-4 py-2.5 rounded-full transition font-medium text-sm ${
                   active ? 'gradient-bg text-black' : 'text-white/70 hover:bg-white/10 hover:text-white'
                 }`}
               >
+                {badge > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1 flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full shadow">
+                    {badge > 99 ? '+99' : badge}
+                  </span>
+                )}
                 <Icon size={18} />
                 <span className="hidden sm:inline">{item.label}</span>
               </Link>

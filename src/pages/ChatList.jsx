@@ -10,6 +10,7 @@ import { formatListTime } from '../utils/formatTime'
 import { Plus, Search, Users } from 'lucide-react'
 import { uploadFile } from '../utils/uploadFile'
 import Layout from '../components/Layout'
+import PullToRefresh from '../components/PullToRefresh'
 
 function ChatItem({ group, user, onClick }) {
   const isDirect = group.type === 'direct' || group.isDirect
@@ -38,18 +39,41 @@ function ChatItem({ group, user, onClick }) {
   const lastReadTs = lastRead?.seconds || 0
   const isUnread = group.lastMessage && group.lastMessage.senderId !== user.uid && lastMsgTs > lastReadTs
 
-  const subtitle = group.lastMessage ? (
-    <>
-      <span className={`truncate ${isUnread ? 'text-white font-medium' : 'text-white/50'}`}>
-        {group.lastSender?.fullName && <span className="text-white/80">{group.lastSender.fullName}:</span>}{' '}
-        {group.lastMessage.type === 'text' ? group.lastMessage.content : group.lastMessage.type === 'image' ? 'صورة' : group.lastMessage.type === 'video' ? 'فيديو' : group.lastMessage.type === 'audio' ? 'رسالة صوتية' : 'ملف'}
-      </span>
-    </>
-  ) : (isDirect ? 'ابدأ المحادثة' : 'لا توجد رسائل بعد')
+  const formatLastMessage = () => {
+    const msg = group.lastMessage
+    if (!msg) return isDirect ? 'ابدأ المحادثة' : 'لا توجد رسائل بعد'
+    const sender = group.lastSender?.fullName
+    const isMe = msg.senderId === user.uid
+    const name = isMe ? 'أنت' : (sender || 'مجهول')
+
+    const contentForType = {
+      text: msg.content || '',
+      image: 'صورة',
+      video: 'فيديو',
+      audio: 'رسالة صوتية',
+      file: msg.fileName || 'ملف',
+      reaction: `تم التفاعل بـ ${msg.content || ''}`,
+    }
+    const body = contentForType[msg.type] || 'رسالة'
+
+    if (msg.type === 'reaction') {
+      return isDirect ? body : `${name} ${body}`
+    }
+
+    if (!isDirect && sender) return `${name}: ${body}`
+    if (isMe) return `أنت: ${body}`
+    return body
+  }
+
+  const subtitle = (
+    <span className={`truncate ${isUnread ? 'text-white font-medium' : 'text-white/50'}`}>
+      {formatLastMessage()}
+    </span>
+  )
 
   return (
     <div onClick={onClick} className={`rounded-2xl p-3 flex items-center gap-3 cursor-pointer transition border ${isUnread ? 'bg-green-500/[0.08] border-r-4 border-green-500/60 hover:bg-green-500/[0.12] shadow-[0_0_20px_rgba(34,197,94,0.08)]' : 'glass hover:bg-[#0a0a0a] hover:border-white/20 border-transparent'}`}>
-      <Avatar src={image} name={title} size={52} online={isDirect && online} />
+      <Avatar src={image} name={title} size={52} />
       <div className="flex-1 min-w-0">
         <div className="flex justify-between items-center gap-2">
           <h3 className={`truncate ${isUnread ? 'font-bold text-white' : 'font-semibold'}`}>{title}</h3>
@@ -75,6 +99,7 @@ export default function ChatList() {
   const [newPreview, setNewPreview] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [refreshKey, setRefreshKey] = useState(0)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -90,7 +115,7 @@ export default function ChatList() {
             try {
               const u = await getDoc(doc(db, 'users', data.lastMessage.senderId))
               data.lastSender = u.exists() ? u.data() : null
-            } catch (e) { data.lastSender = null }
+            } catch { data.lastSender = null }
           }
           return data
         }))
@@ -107,7 +132,12 @@ export default function ChatList() {
       }
     )
     return unsub
-  }, [user])
+  }, [user, refreshKey])
+
+  const handleRefresh = async () => {
+    setRefreshKey(k => k + 1)
+    await new Promise(resolve => setTimeout(resolve, 800))
+  }
 
   const createGroup = async (e) => {
     e.preventDefault()
@@ -168,7 +198,7 @@ export default function ChatList() {
 
       {error && <p className="mx-4 sm:mx-5 text-sm text-white bg-white/10 border border-white/10 rounded-xl p-3">{error}</p>}
 
-      <div className="flex-1 overflow-y-auto px-4 sm:px-5 pb-28 space-y-3">
+      <PullToRefresh onRefresh={handleRefresh} contentClassName="px-4 sm:px-5 pb-28 space-y-3">
         {filtered.map(g => (
           <ChatItem key={g.id} group={g} user={user} onClick={() => navigate(`/chat/${g.id}`)} />
         ))}
@@ -178,7 +208,7 @@ export default function ChatList() {
             <p>لا توجد محادثات. أنشئ محادثتك الأولى.</p>
           </div>
         )}
-      </div>
+      </PullToRefresh>
 
       <button onClick={() => setShowCreate(true)} className="fixed bottom-20 right-4 sm:bottom-24 sm:right-6 w-14 h-14 rounded-full gradient-bg flex items-center justify-center shadow-lg hover:scale-105 transition z-30">
         <Plus size={28} />

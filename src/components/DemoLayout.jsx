@@ -8,7 +8,7 @@ const nav = [
   { path: '/demo/requests', label: 'الطلبات', icon: Bell },
 ]
 
-export default function DemoLayout({ children, userName = 'مستخدم تجريبي', username = 'demo_user' }) {
+export default function DemoLayout({ children, userName = 'مستخدم تجريبي', username = 'demo_user', unreadCount = 0, requestCount = 0 }) {
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -32,7 +32,7 @@ export default function DemoLayout({ children, userName = 'مستخدم تجري
         </div>
       </header>
 
-      <main className="flex-1 min-h-0 overflow-y-auto relative">
+      <main className="flex-1 min-h-0 flex flex-col overflow-hidden relative">
         {children}
       </main>
 
@@ -41,14 +41,20 @@ export default function DemoLayout({ children, userName = 'مستخدم تجري
           {nav.map((item) => {
             const active = location.pathname === item.path
             const Icon = item.icon
+            const badge = item.path === '/demo/chatlist' ? unreadCount : item.path === '/demo/requests' ? requestCount : 0
             return (
               <Link
                 key={item.path}
                 to={item.path}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-full transition font-medium text-sm ${
+                className={`relative flex items-center gap-2 px-4 py-2.5 rounded-full transition font-medium text-sm ${
                   active ? 'gradient-bg text-black' : 'text-white/70 hover:bg-white/10 hover:text-white'
                 }`}
               >
+                {badge > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1 flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full shadow">
+                    {badge > 99 ? '+99' : badge}
+                  </span>
+                )}
                 <Icon size={18} />
                 <span className="hidden sm:inline">{item.label}</span>
               </Link>

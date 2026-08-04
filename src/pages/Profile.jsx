@@ -5,7 +5,7 @@ import { updateEmail, updatePassword, EmailAuthProvider, reauthenticateWithCrede
 import { auth, db } from '../firebase'
 import { useAuth } from '../App'
 import { uploadFile } from '../utils/uploadFile'
-import { ChevronRight, MessageCircle, User, Mail, Calendar, UserPlus, Check, Send, Pencil, Camera, X, Lock, AtSign, FileText, Save, Ban, Users } from 'lucide-react'
+import { ChevronRight, MessageCircle, User, Mail, UserPlus, Check, Send, Pencil, Camera, Lock, AtSign, FileText, Save, Ban, Users } from 'lucide-react'
 import { Avatar } from '../components/Avatar'
 import { usePresence } from '../hooks/usePresence'
 import { formatActiveStatus } from '../utils/activeStatus'
@@ -36,14 +36,10 @@ export default function Profile() {
   })
 
   const [pendingPics, setPendingPics] = useState({ profilePic: '', coverPic: '' })
-  const [pendingFiles, setPendingFiles] = useState({ profilePic: null, coverPic: null })
   const [friends, setFriends] = useState([])
-  const [repeat, setRepeat] = useState(2)
-  const [scrollDuration, setScrollDuration] = useState(30)
 
   const profileRef = useRef()
   const coverRef = useRef()
-  const stripRef = useRef()
   const fromReqs = useRef([])
   const toReqs = useRef([])
 
@@ -129,20 +125,7 @@ export default function Profile() {
     return () => { unsub1(); unsub2() }
   }, [uid])
 
-  useEffect(() => {
-    if (!friends.length || !stripRef.current) return
-    const update = () => {
-      const cardW = 160 + 12
-      const setW = friends.length * cardW
-      const containerW = stripRef.current?.clientWidth || window.innerWidth
-      const r = Math.max(2, Math.ceil((containerW * 2) / setW))
-      setRepeat(r)
-      setScrollDuration(Math.max(20, r * 5))
-    }
-    update()
-    window.addEventListener('resize', update)
-    return () => window.removeEventListener('resize', update)
-  }, [friends])
+
 
   const toggleBlock = async () => {
     if (!user || uid === user.uid) return
@@ -185,8 +168,7 @@ export default function Profile() {
     try {
       const url = await uploadFile(file, `users/${uid}/${type}`)
       setPendingPics(prev => ({ ...prev, [type]: url }))
-      setPendingFiles(prev => ({ ...prev, [type]: file }))
-    } catch (e) {
+    } catch {
       setErr('فشل رفع الصورة.')
     }
   }
@@ -443,28 +425,25 @@ export default function Profile() {
       </div>
 
       {!editMode && (
-        <div className="flex-1 px-5 sm:px-6 py-6 overflow-hidden" ref={stripRef}>
+        <div className="flex-1 px-5 sm:px-6 py-6 overflow-hidden">
           <h3 className="font-semibold mb-4 flex items-center gap-2 text-white"><Users size={18} /> الأصدقاء ({friends.length})</h3>
           {friends.length === 0 ? (
             <p className="text-white/40 text-sm">لا يوجد أصدقاء بعد.</p>
           ) : (
-            <div className="relative overflow-hidden">
-              <div
-                className="friends-scroll flex gap-3 py-2"
-                style={{ '--n': repeat, animationDuration: `${scrollDuration}s` }}
-              >
-                {[...Array(repeat)].flatMap((_, i) => friends.map(f => (
-                  <div
-                    key={`${f.uid}-${i}`}
-                    onClick={() => navigate(`/profile/${f.uid}`)}
-                    className="shrink-0 w-40 glass rounded-2xl p-3 flex flex-col items-center text-center cursor-pointer hover:bg-white/10 transition"
-                  >
-                    <Avatar src={f.profilePic} name={f.fullName} size={56} />
-                    <p className="mt-2 text-sm font-semibold truncate w-full">{f.fullName}</p>
-                    <p className="text-xs text-white/50 truncate w-full">@{f.username}</p>
+            <div className="flex overflow-x-auto gap-3 pb-2 snap-x">
+              {friends.map(f => (
+                <div
+                  key={f.uid}
+                  onClick={() => navigate(`/profile/${f.uid}`)}
+                  className="snap-start shrink-0 w-56 glass rounded-2xl p-3 flex items-center gap-3 cursor-pointer hover:bg-white/10 transition"
+                >
+                  <Avatar src={f.profilePic} name={f.fullName} size={56} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold truncate">{f.fullName}</p>
+                    <p className="text-xs text-white/50 truncate">@{f.username}</p>
                   </div>
-                )))}
-              </div>
+                </div>
+              ))}
             </div>
           )}
         </div>

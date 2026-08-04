@@ -2,13 +2,7 @@ import React, { useRef, useState, useEffect, useMemo } from 'react'
 import { Avatar } from './Avatar'
 import { formatMessageTime } from '../utils/formatTime'
 import { Play, Pause, FileText, Download, X, Reply, Heart, Trash2 } from 'lucide-react'
-
-const EMOJIS = [
-  '❤️', '🔥', '👍', '😂', '😮', '😢', '😡', '😎', '🥳', '🤔',
-  '👏', '🙏', '😍', '🥰', '👀', '🤣', '😭', '😤', '🤯', '✨',
-  '🎉', '💯', '❗', '❓', '🌹', '🎁', '🕊️', '☕', '🤝', '💪',
-  '🏆', '🌟', '⚡', '🔥', '❄️', '🌈', '✅', '⛔', '🚀', '📌',
-]
+import { loadEmojiCategories } from '../utils/emojis'
 
 function formatAudioTime(s) {
   if (!isFinite(s) || isNaN(s)) return '0:00'
@@ -148,49 +142,119 @@ function replyPreviewText(reply) {
   return reply.content || ''
 }
 
-function MessageMenu({ x, y, onClose, onReply, onReact, onDelete }) {
-  const [pos, setPos] = useState({ x, y })
-  const menuRef = useRef(null)
+function EmojiPicker({ onReact, userReaction }) {
+  const [categories, setCategories] = useState([])
+  const [category, setCategory] = useState(null)
+  const [recents, setRecents] = useState([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const vw = window.innerWidth
-    const vh = window.innerHeight
-    const menu = menuRef.current
-    let cx = x
-    let cy = y
-    if (menu) {
-      const rect = menu.getBoundingClientRect()
-      const pad = 12
-      const minX = rect.width / 2 + pad
-      const maxX = vw - rect.width / 2 - pad
-      const minY = rect.height + pad
-      const maxY = vh - pad
-      cx = Math.max(minX, Math.min(maxX, x))
-      cy = Math.max(minY, Math.min(maxY, y))
-    }
-    setPos({ x: cx, y: cy })
-  }, [x, y])
+    try {
+      const stored = JSON.parse(localStorage.getItem('gestion-recent-emojis') || '[]')
+      if (Array.isArray(stored)) setRecents(stored)
+    } catch {}
+    loadEmojiCategories().then((cats) => {
+      setCategories(cats)
+      setCategory((prev) => prev || cats[0]?.name)
+      setLoading(false)
+    })
+  }, [])
+
+  const allCategories = useMemo(() => {
+    if (!recents.length) return categories
+    return [{ name: 'recent', label: 'أخيرة', emojis: recents }, ...categories]
+  }, [categories, recents])
+
+  const active = allCategories.find(c => c.name === category) || allCategories[0]
+
+  const handleSelect = (emoji) => {
+    try {
+      const next = [emoji, ...recents.filter(e => e !== emoji)].slice(0, 24)
+      localStorage.setItem('gestion-recent-emojis', JSON.stringify(next))
+    } catch {}
+    onReact(emoji)
+  }
+
+  if (loading) {
+    return (
+      <div className="flex-1 min-h-0 flex items-center justify-center py-8">
+        <div className="w-8 h-8 rounded-full border-2 border-white/20 border-t-white animate-spin" />
+      </div>
+    )
+  }
 
   return (
-    <>
-      <div className="fixed inset-0 z-[60]" onClick={onClose} />
-      <div
-        ref={menuRef}
-        className="message-menu glass-strong emoji-font"
-        style={{ left: pos.x, top: pos.y }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="message-menu-emojis">
-          {EMOJIS.map(emoji => (
-            <button key={emoji} onClick={() => onReact(emoji)} className="message-menu-emoji">{emoji}</button>
+    <div className="flex flex-col min-h-0 flex-1">
+      <div className="flex overflow-x-auto gap-2 pb-2 mb-2 no-scrollbar">
+        {allCategories.map((cat) => (
+          <button
+            key={cat.name}
+            onClick={() => setCategory(cat.name)}
+            className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition whitespace-nowrap ${
+              cat.name === category
+                ? 'bg-white text-black'
+                : 'bg-white/5 text-white/70 hover:bg-white/10'
+            }`}
+          >
+            {cat.label}
+          </button>
+        ))}
+      </div>
+      <div className="flex-1 min-h-0 overflow-y-auto pr-1">
+        <div className="grid grid-cols-7 sm:grid-cols-8 gap-1 emoji-font">
+          {active?.emojis?.map((emoji) => (
+            <button
+              key={emoji}
+              onClick={() => handleSelect(emoji)}
+              className={`h-11 rounded-xl text-2xl flex items-center justify-center transition hover:scale-110 hover:bg-white/10 ${
+                userReaction === emoji ? 'bg-white/15 ring-1 ring-white/30' : ''
+              }`}
+              aria-label="إضافة رد فعل"
+            >
+              {emoji}
+            </button>
           ))}
         </div>
-        <div className="message-menu-actions">
-          <button onClick={() => onReply()} className="message-menu-action"><Reply size={16} /> رد</button>
-          {onDelete && <button onClick={() => onDelete()} className="message-menu-action text-red-300"><Trash2 size={16} /> حذف</button>}
+      </div>
+    </div>
+  )
+}
+
+function MessageMenu({ onClose, onReply, onReact, onDelete, userReaction }) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="w-full max-w-md mx-auto glass-strong rounded-t-3xl p-4 max-h-[75vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-3">
+          <h4 className="font-bold text-white">ردود الفعل</h4>
+          <button onClick={onClose} className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition">
+            <X size={18} />
+          </button>
+        </div>
+
+        {userReaction && (
+          <div className="flex items-center gap-3 mb-3 p-2 rounded-xl bg-white/5">
+            <span className="text-2xl emoji-font">{userReaction}</span>
+            <span className="text-sm text-white/70">رد فعلك الحالي</span>
+            <button
+              onClick={() => onReact(userReaction)}
+              className="mr-auto text-xs px-3 py-1.5 rounded-lg bg-red-500/20 text-red-300 hover:bg-red-500/30 transition"
+            >
+              إزالة
+            </button>
+          </div>
+        )}
+
+        <EmojiPicker onReact={onReact} userReaction={userReaction} />
+
+        <div className="border-t border-white/10 mt-3 pt-3 flex flex-col gap-2">
+          <button onClick={onReply} className="message-menu-action"><Reply size={16} /> رد</button>
+          {onDelete && <button onClick={onDelete} className="message-menu-action text-red-300"><Trash2 size={16} /> حذف</button>}
         </div>
       </div>
-    </>
+    </div>
   )
 }
 
@@ -199,89 +263,124 @@ export function MessageBubble({ msg, user, isMe, readBy = [], currentUserId, onR
   const [err, setErr] = useState(false)
   const [lightbox, setLightbox] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
-  const [menuPos, setMenuPos] = useState({ x: 0, y: 0 })
   const [showHeart, setShowHeart] = useState(false)
   const [heartPos, setHeartPos] = useState({ x: 0, y: 0 })
   const [translateX, setTranslateX] = useState(0)
-  const [swiping, setSwiping] = useState(false)
+  const [isSwiping, setIsSwiping] = useState(false)
+  const [swipeReady, setSwipeReady] = useState(false)
+
   const longPressRef = useRef(null)
   const touchStartRef = useRef(null)
   const longPressTriggered = useRef(false)
-  const swipeTriggered = useRef(false)
+  const suppressClickRef = useRef(false)
   const clickCountRef = useRef(0)
   const clickTimerRef = useRef(null)
   const bubbleRef = useRef(null)
   const name = user?.fullName || 'مجهول'
   const time = formatMessageTime(msg.createdAt)
 
-  const reactions = msg.reactions || {}
+  const myReaction = useMemo(() => {
+    const reactions = msg.reactions || {}
+    return Object.entries(reactions).find(([_, users = {}]) => users[currentUserId])?.[0] || null
+  }, [msg.reactions, currentUserId])
+
   const reactionList = useMemo(() => {
+    const reactions = msg.reactions || {}
     return Object.entries(reactions)
       .map(([emoji, users = {}]) => ({ emoji, count: Object.keys(users).length, me: !!users[currentUserId] }))
       .filter(r => r.count > 0)
-  }, [reactions, currentUserId])
+  }, [msg.reactions, currentUserId])
 
-  const handleReaction = (emoji) => { onReact(msg, emoji); setMenuOpen(false) }
-  const handleReply = () => { onReply(msg); setMenuOpen(false) }
-  const handleDelete = () => { onDelete?.(msg); setMenuOpen(false) }
+  const handleReaction = (emoji) => {
+    if (onReact) onReact(msg, emoji)
+    setMenuOpen(false)
+  }
+  const handleReply = () => {
+    if (onReply) onReply(msg)
+    setMenuOpen(false)
+  }
+  const handleDelete = () => {
+    if (onDelete) onDelete(msg)
+    setMenuOpen(false)
+  }
 
-  const showMenuAt = (x, y) => { longPressTriggered.current = true; setMenuPos({ x, y }); setMenuOpen(true) }
+  const showMenu = () => { longPressTriggered.current = true; setMenuOpen(true) }
+
+  const getPoint = (e) => (e.touches && e.touches[0] ? e.touches[0] : e)
 
   const startTouch = (e) => {
-    const touch = e.touches ? e.touches[0] : e
-    if (!touch) return
+    const p = getPoint(e)
+    if (!p) return
     longPressTriggered.current = false
-    swipeTriggered.current = false
-    touchStartRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() }
+    suppressClickRef.current = false
+    touchStartRef.current = { x: p.clientX, y: p.clientY, time: Date.now() }
+    setIsSwiping(false)
+    setSwipeReady(false)
+
     longPressRef.current = setTimeout(() => {
       longPressRef.current = null
-      showMenuAt(touch.clientX, touch.clientY)
+      showMenu()
     }, 500)
   }
 
   const moveTouch = (e) => {
     if (!touchStartRef.current) return
-    const touch = e.touches ? e.touches[0] : e
-    const dx = touch.clientX - touchStartRef.current.x
-    const dy = touch.clientY - touchStartRef.current.y
+    const p = getPoint(e)
+    const dx = p.clientX - touchStartRef.current.x
+    const dy = p.clientY - touchStartRef.current.y
 
-    // Horizontal swipe reply
-    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 12) {
+    if (!isSwiping) {
+      if (Math.abs(dx) < Math.abs(dy) || Math.abs(dx) < 10) {
+        if (Math.hypot(dx, dy) > 12) cancelTouch()
+        return
+      }
+      // Horizontal swipe detected - start reply gesture.
       if (longPressRef.current) { clearTimeout(longPressRef.current); longPressRef.current = null }
-      setSwiping(true)
-      setTranslateX(dx * 0.5)
-      swipeTriggered.current = Math.abs(dx) > 70
-      if (Math.abs(dx) > 20) e.preventDefault?.()
-      return
+      setIsSwiping(true)
+      e.preventDefault?.()
     }
 
-    if (Math.hypot(dx, dy) > 10) cancelTouch()
+    // Constrain movement to the reply direction per message side for a stable, smooth feel.
+    const maxOffset = 80
+    const progress = dx * 0.4
+    let tx
+    if (isMe) {
+      tx = Math.max(-maxOffset, Math.min(0, progress))
+    } else {
+      tx = Math.max(0, Math.min(maxOffset, progress))
+    }
+    setTranslateX(tx)
+    setSwipeReady(Math.abs(tx) >= 55)
   }
 
-  const endTouch = (e) => {
-    if (swiping && swipeTriggered.current) {
-      setTranslateX(0)
-      setSwiping(false)
-      swipeTriggered.current = false
-      touchStartRef.current = null
-      handleReply()
+  const endTouch = () => {
+    if (isSwiping) {
+      if (swipeReady) {
+        setTranslateX(0)
+        setIsSwiping(false)
+        setSwipeReady(false)
+        touchStartRef.current = null
+        handleReply()
+        return
+      }
+      suppressClickRef.current = Math.abs(translateX) > 10
+      cancelTouch()
       return
     }
     cancelTouch()
-    setTranslateX(0)
-    setSwiping(false)
   }
 
   const cancelTouch = () => {
     if (longPressRef.current) { clearTimeout(longPressRef.current); longPressRef.current = null }
     touchStartRef.current = null
-    setSwiping(false)
+    setIsSwiping(false)
+    setSwipeReady(false)
     setTranslateX(0)
   }
 
   const onContextMenu = (e) => {
     e.preventDefault()
-    showMenuAt(e.clientX, e.clientY)
+    showMenu()
   }
 
   const onBubbleClick = (e) => {
@@ -290,8 +389,16 @@ export function MessageBubble({ msg, user, isMe, readBy = [], currentUserId, onR
       clickCountRef.current = 0
       return
     }
-    const x = e.clientX || (e.touches && e.touches[0]?.clientX) || 0
-    const y = e.clientY || (e.touches && e.touches[0]?.clientY) || 0
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false
+      clickCountRef.current = 0
+      return
+    }
+
+    const p = e.touches?.[0] || e
+    const x = p.clientX || 0
+    const y = p.clientY || 0
+
     clickCountRef.current += 1
     if (clickCountRef.current === 1) {
       clickTimerRef.current = setTimeout(() => { clickCountRef.current = 0 }, 300)
@@ -301,7 +408,7 @@ export function MessageBubble({ msg, user, isMe, readBy = [], currentUserId, onR
       setHeartPos({ x, y })
       setShowHeart(true)
       setTimeout(() => setShowHeart(false), 900)
-      onReact(msg, '❤️')
+      handleReaction('❤️')
     }
   }
 
@@ -356,7 +463,12 @@ export function MessageBubble({ msg, user, isMe, readBy = [], currentUserId, onR
   }
 
   const swipeIcon = (
-    <div className={`absolute top-1/2 -translate-y-1/2 text-white/40 pointer-events-none transition-opacity ${isMe ? 'right-full mr-3' : 'left-full ml-3'}`} style={{ opacity: swiping && swipeTriggered.current ? 1 : 0 }}>
+    <div
+      className={`absolute top-1/2 -translate-y-1/2 text-white/40 pointer-events-none transition-opacity ${
+        isMe ? 'right-full mr-3' : 'left-full ml-3'
+      }`}
+      style={{ opacity: isSwiping && swipeReady ? 1 : 0 }}
+    >
       <Reply size={24} />
     </div>
   )
@@ -382,8 +494,13 @@ export function MessageBubble({ msg, user, isMe, readBy = [], currentUserId, onR
             {swipeIcon}
             <div
               ref={bubbleRef}
-              className={`message-bubble ${isMe ? 'sent' : 'received'} relative`}
-              style={{ transform: `translateX(${translateX}px)`, transition: swiping ? 'none' : 'transform 0.25s ease' }}
+              className={`message-bubble ${isMe ? 'sent' : 'received'} relative select-none`}
+              style={{
+                transform: `translateX(${translateX}px)`,
+                transition: isSwiping ? 'none' : 'transform 0.25s cubic-bezier(0.2, 0, 0, 1)',
+                willChange: 'transform',
+                touchAction: 'pan-y',
+              }}
               onTouchStart={startTouch}
               onTouchMove={moveTouch}
               onTouchEnd={endTouch}
@@ -451,7 +568,13 @@ export function MessageBubble({ msg, user, isMe, readBy = [], currentUserId, onR
         <MediaLightbox url={msg.mediaUrl} type={msg.type} onClose={() => setLightbox(false)} />
       )}
       {menuOpen && (
-        <MessageMenu x={menuPos.x} y={menuPos.y} onClose={() => setMenuOpen(false)} onReply={handleReply} onReact={handleReaction} onDelete={isMe ? handleDelete : undefined} />
+        <MessageMenu
+          onClose={() => setMenuOpen(false)}
+          onReply={handleReply}
+          onReact={handleReaction}
+          onDelete={isMe ? handleDelete : undefined}
+          userReaction={myReaction}
+        />
       )}
     </>
   )
