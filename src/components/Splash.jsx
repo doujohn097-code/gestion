@@ -1,30 +1,22 @@
 import React, { useEffect, useRef, useState } from 'react'
 
 export default function Splash() {
-  const [show, setShow] = useState(false)
+  const [show, setShow] = useState(true)
   const [fading, setFading] = useState(false)
   const videoRef = useRef(null)
 
   useEffect(() => {
-    const seen = localStorage.getItem('gestion_splash_seen')
-    if (seen) return
-    setShow(true)
-  }, [])
-
-  useEffect(() => {
-    if (!show) return
     const timer = setTimeout(() => {
       finish()
     }, 4500)
     return () => clearTimeout(timer)
-  }, [show])
+  }, [])
 
   const finish = () => {
     if (!show) return
     setFading(true)
     setTimeout(() => {
       setShow(false)
-      localStorage.setItem('gestion_splash_seen', '1')
     }, 600)
   }
 
@@ -42,7 +34,7 @@ export default function Splash() {
         muted
         playsInline
         onEnded={finish}
-        className="w-full h-full object-cover"
+        className="w-full h-full object-contain"
       />
     </div>
   )
