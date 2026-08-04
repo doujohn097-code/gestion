@@ -1,6 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { doc, onSnapshot, collection, query, orderBy, addDoc, serverTimestamp, updateDoc, arrayUnion, arrayRemove, getDoc, getDocs, deleteDoc } from 'firebase/firestore'
+import { doc, onSnapshot, collection, query, orderBy, addDoc, setDoc, serverTimestamp, updateDoc, arrayUnion, arrayRemove, getDoc, getDocs, deleteDoc } from 'firebase/firestore'
 import { getIdToken } from 'firebase/auth'
 import { auth, db } from '../firebase'
 import { useAuth } from '../App'
@@ -27,8 +27,12 @@ export default function Chat() {
   const [pendingFile, setPendingFile] = useState(null)
   const [pendingType, setPendingType] = useState(null)
   const [pendingPreview, setPendingPreview] = useState('')
+  const [typingUsers, setTypingUsers] = useState([])
   const bottomRef = useRef(null)
   const fileRef = useRef()
+  const typingTimerRef = useRef(null)
+  const clearTypingTimerRef = useRef(null)
+  const readMarkedRef = useRef(null)
 
   useEffect(() => {
     if (!groupId) return
@@ -44,8 +48,30 @@ export default function Chat() {
       (snap) => { setMessages(snap.docs.map(d => ({ id: d.id, ...d.data() }))) },
       (err) => { console.error('Messages load error', err); setError('تعذّر تحميل الرسائل، تحقق من الصلاحيات.') }
     )
-    return () => { unsubGroup(); unsubMessages() }
-  }, [groupId])
+    const unsubTyping = onSnapshot(
+      collection(db, 'groups', groupId, 'typing'),
+      (snap) => {
+        const now = Date.now() / 1000
+        const list = snap.docs
+          .map(d => ({ uid: d.id, ...d.data() }))
+          .filter(t => t.typing === true && t.updatedAt && (now - t.updatedAt.seconds) < 8 && t.uid !== user.uid)
+        setTypingUsers(list)
+      },
+      (err) => { console.warn('Typing load error', err) }
+    )
+
+    return () => { unsubGroup(); unsubMessages(); unsubTyping() }
+  }, [groupId, user.uid])
+
+  useEffect(() => {
+    return () => {
+      if (typingTimerRef.current) clearTimeout(typingTimerRef.current)
+      if (clearTypingTimerRef.current) clearTimeout(clearTypingTimerRef.current)
+      if (groupId && user.uid) {
+        setDoc(doc(db, 'groups', groupId, 'typing', user.uid), { typing: false, updatedAt: serverTimestamp() })
+      }
+    }
+  }, [groupId, user.uid])
 
   useEffect(() => {
     const fetchMembers = async () => {
@@ -62,7 +88,60 @@ export default function Chat() {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+  }, [messages, typingUsers])
+
+  useEffect(() => {
+    if (!groupId || !user.uid) return
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current)
+    if (clearTypingTimerRef.current) clearTimeout(clearTypingTimerRef.current)
+
+    const updateTyping = async (isTyping) => {
+      try {
+        await setDoc(doc(db, 'groups', groupId, 'typing', user.uid), {
+          typing: isTyping,
+          uid: user.uid,
+          name: profile?.fullName || '',
+          profilePic: profile?.profilePic || '',
+          updatedAt: serverTimestamp(),
+        })
+      } catch (e) { console.warn('Typing update failed', e) }
+    }
+
+    if (text.trim()) {
+      updateTyping(true)
+      clearTypingTimerRef.current = setTimeout(() => updateTyping(false), 2500)
+    } else {
+      updateTyping(false)
+    }
+  }, [text, groupId, user.uid, profile])
+
+  useEffect(() => {
+    if (!messages.length || !groupId || !user.uid) return
+    const lastMsg = messages[messages.length - 1]
+    if (lastMsg.id === readMarkedRef.current) return
+    if (lastMsg.senderId === user.uid) return
+    if (lastMsg.readBy?.includes(user.uid)) {
+      readMarkedRef.current = lastMsg.id
+      return
+    }
+    readMarkedRef.current = lastMsg.id
+    updateDoc(doc(db, 'groups', groupId, 'messages', lastMsg.id), { readBy: arrayUnion(user.uid) })
+      .catch(e => console.warn('Read receipt update failed', e))
+  }, [messages, groupId, user.uid])
+
+  const readReceipts = useMemo(() => {
+    const receipts = messages.map(() => [])
+    const latestReadByUser = {}
+    messages.forEach((msg, idx) => {
+      const readers = msg.readBy || []
+      readers.forEach(uid => { latestReadByUser[uid] = idx })
+    })
+    Object.entries(latestReadByUser).forEach(([uid, idx]) => {
+      const member = members[uid]
+      if (member && receipts[idx]) receipts[idx].push(member)
+    })
+    return receipts
+  }, [messages, members])
 
   const sendNotification = async (msgContent, msgType) => {
     try {
@@ -225,9 +304,30 @@ export default function Chat() {
       )}
 
       <div className="flex-1 min-h-0 overflow-y-auto p-4 pb-24" dir="rtl">
-        {messages.map(msg => (
-          <MessageBubble key={msg.id} msg={msg} user={members[msg.senderId]} isMe={msg.senderId === user.uid} />
+        {messages.map((msg, idx) => (
+          <MessageBubble key={msg.id} msg={msg} user={members[msg.senderId]} isMe={msg.senderId === user.uid} readBy={readReceipts[idx]} />
         ))}
+        {typingUsers.length > 0 && (
+          <div className="flex items-end gap-2 mb-3" dir="ltr">
+            <div className="flex -space-x-2 rtl:space-x-reverse">
+              {typingUsers.slice(0, 3).map((u, i) => (
+                <div key={u.uid} className="w-7 h-7 rounded-full overflow-hidden border-2 border-black" style={{ zIndex: 10 - i }}>
+                  <Avatar src={u.profilePic} name={u.name || 'مجهول'} size={28} />
+                </div>
+              ))}
+            </div>
+            <div className="glass rounded-2xl px-4 py-2.5 flex items-center gap-2">
+              <span className="text-sm text-white/70">
+                {typingUsers.length === 1 ? `${typingUsers[0].name || 'مجهول'} يكتب` : `${typingUsers.length} أشخاص يكتبون`}
+              </span>
+              <span className="flex gap-1 items-end h-4 pb-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-white/70 animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-1.5 h-1.5 rounded-full bg-white/70 animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="w-1.5 h-1.5 rounded-full bg-white/70 animate-bounce" style={{ animationDelay: '300ms' }} />
+              </span>
+            </div>
+          </div>
+        )}
         <div ref={bottomRef} />
       </div>
 
