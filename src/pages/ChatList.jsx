@@ -82,7 +82,7 @@ function ChatItem({ group, user, onClick }) {
         <div className="flex items-center gap-2 mt-0.5">
           <p className="text-sm truncate flex-1">{subtitle}</p>
           {isUnread && <span className="unread-dot shrink-0" />}
-          {!isUnread && isDirect && active && <span className="text-[11px] text-white/40 shrink-0">{active}</span>}
+          {!isUnread && isDirect && active && <span className={`text-[11px] shrink-0 ${online ? 'text-green-400' : 'text-white/40'}`}>{active}</span>}
         </div>
       </div>
     </div>

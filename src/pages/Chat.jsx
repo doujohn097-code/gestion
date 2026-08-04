@@ -126,7 +126,7 @@ export default function Chat() {
   }, [user])
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    bottomRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' })
   }, [messages, typingUsers])
 
   useEffect(() => {
@@ -468,7 +468,7 @@ export default function Chat() {
         </div>
       )}
 
-      <div className="flex-1 min-h-0 overflow-y-auto p-4 pb-24 chat-bg" dir="rtl">
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 pb-24 chat-bg" dir="rtl">
         {messages.map((msg, idx) => (
           <MessageBubble
             key={msg.id}
