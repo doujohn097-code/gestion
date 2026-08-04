@@ -4,7 +4,16 @@ import { doc, updateDoc } from 'firebase/firestore'
 export async function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return
   try {
-    await navigator.serviceWorker.register('/sw.js')
+    const reg = await navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' })
+    reg.addEventListener('updatefound', () => {
+      const newWorker = reg.installing
+      if (!newWorker) return
+      newWorker.addEventListener('statechange', () => {
+        if (newWorker.state === 'activated' && navigator.serviceWorker.controller) {
+          window.location.reload()
+        }
+      })
+    })
   } catch (err) {
     console.warn('SW registration failed', err)
   }
