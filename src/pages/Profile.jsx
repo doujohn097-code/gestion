@@ -5,16 +5,19 @@ import { updateEmail, updatePassword, EmailAuthProvider, reauthenticateWithCrede
 import { auth, db } from '../firebase'
 import { useAuth } from '../App'
 import { uploadFile } from '../utils/uploadFile'
-import { ChevronRight, MessageCircle, User, Mail, Calendar, UserPlus, Check, Send, Pencil, Camera, X, Lock, AtSign, FileText, Save } from 'lucide-react'
+import { ChevronRight, MessageCircle, User, Mail, Calendar, UserPlus, Check, Send, Pencil, Camera, X, Lock, AtSign, FileText, Save, Ban } from 'lucide-react'
 import { Avatar } from '../components/Avatar'
+import { usePresence } from '../hooks/usePresence'
+import { formatActiveStatus } from '../utils/activeStatus'
 
 export default function Profile() {
   const { uid } = useParams()
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const navigate = useNavigate()
   const [target, setTarget] = useState(null)
   const [loading, setLoading] = useState(true)
   const [relation, setRelation] = useState(null)
+  const [blocked, setBlocked] = useState(false)
   const [editMode, setEditMode] = useState(false)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
@@ -89,6 +92,26 @@ export default function Profile() {
     try { await addDoc(collection(db, 'friendRequests'), { from: user.uid, to: uid, status: 'pending', createdAt: serverTimestamp() }) } catch (e) { console.error(e) }
   }
 
+  const { online, lastSeen } = usePresence(uid)
+  const activeStatus = formatActiveStatus({ online, lastSeen })
+
+  useEffect(() => {
+    const myBlocked = profile?.blockedUsers || []
+    setBlocked(myBlocked.includes(uid))
+  }, [profile, uid])
+
+  const toggleBlock = async () => {
+    if (!user || uid === user.uid) return
+    const myRef = doc(db, 'users', user.uid)
+    if (blocked) {
+      await updateDoc(myRef, { blockedUsers: arrayRemove(uid) })
+      setBlocked(false)
+    } else {
+      await updateDoc(myRef, { blockedUsers: arrayUnion(uid) })
+      setBlocked(true)
+    }
+  }
+
   const startChat = async () => {
     if (uid === user.uid) return
     try {
@@ -103,7 +126,7 @@ export default function Profile() {
         name: target.fullName,
         image: target.profilePic || '',
         members: [user.uid, uid].sort(),
-        isDirect: true,
+        type: 'direct',
         createdBy: user.uid,
         createdAt: serverTimestamp(),
         lastMessage: null,
@@ -258,7 +281,7 @@ export default function Profile() {
       <div className="relative px-5 sm:px-6 -mt-16 flex flex-col items-center text-center">
         <div className="relative">
           <div className="rounded-full ring-4 ring-black overflow-hidden border border-white/20 shadow-xl bg-[#111]">
-            <Avatar src={displayPic} name={target.fullName} size={128} />
+            <Avatar src={displayPic} name={target.fullName} size={128} online={online && !isMe} />
           </div>
           {isMe && editMode && (
             <>
@@ -274,6 +297,7 @@ export default function Profile() {
           <>
             <h1 className="mt-4 text-2xl sm:text-3xl font-bold gradient-text">{target.fullName}</h1>
             <p className="text-white/50">@{target.username}</p>
+            {activeStatus && <p className={`text-xs mt-1 ${online ? 'text-green-400' : 'text-white/40'}`}>{activeStatus}</p>}
             {target.bio && <p className="mt-3 text-white/70 text-sm max-w-md leading-relaxed">{target.bio}</p>}
 
             {isMe && (
@@ -367,6 +391,9 @@ export default function Profile() {
                 <UserPlus size={20} /> إضافة صديق
               </button>
             )}
+            <button onClick={toggleBlock} className={`flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-2xl font-bold transition ${blocked ? 'bg-red-500/20 text-red-300 border border-red-500/30' : 'bg-[#111] border border-white/20 text-white hover:bg-white/10'}`}>
+              <Ban size={18} /> {blocked ? 'إلغاء الحظر' : 'حظر'}
+            </button>
           </div>
         )}
       </div>

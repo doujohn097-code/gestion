@@ -16,6 +16,7 @@ import DemoProfile from './pages/DemoProfile'
 import DemoUsers from './pages/DemoUsers'
 import DemoRequests from './pages/DemoRequests'
 import Splash from './components/Splash'
+import { useMyPresence } from './hooks/usePresence'
 
 const AuthContext = createContext(null)
 export const useAuth = () => useContext(AuthContext)
@@ -48,6 +49,8 @@ function AuthLoader({ children }) {
       if (unsubProfile) unsubProfile()
     }
   }, [])
+
+  useMyPresence(user)
 
   if (user === undefined || profile === undefined) {
     return (

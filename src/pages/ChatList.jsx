@@ -4,10 +4,57 @@ import { collection, query, where, onSnapshot, doc, getDoc, addDoc, updateDoc, s
 import { db } from '../firebase'
 import { useAuth } from '../App'
 import { Avatar } from '../components/Avatar'
+import { usePresence } from '../hooks/usePresence'
+import { formatActiveStatus } from '../utils/activeStatus'
 import { formatListTime } from '../utils/formatTime'
 import { Plus, Search, Users } from 'lucide-react'
 import { uploadFile } from '../utils/uploadFile'
 import Layout from '../components/Layout'
+
+function ChatItem({ group, user, onClick }) {
+  const isDirect = group.type === 'direct' || group.isDirect
+  const [member, setMember] = useState(null)
+
+  useEffect(() => {
+    const fetch = async () => {
+      if (!isDirect) return
+      const otherId = group.members?.find(id => id !== user.uid)
+      if (!otherId) return
+      const snap = await getDoc(doc(db, 'users', otherId))
+      if (snap.exists()) setMember({ uid: snap.id, ...snap.data() })
+    }
+    fetch()
+  }, [group, isDirect, user.uid])
+
+  const otherUid = isDirect ? group.members?.find(id => id !== user.uid) : null
+  const { online, lastSeen } = usePresence(otherUid)
+
+  const title = isDirect ? (member?.fullName || 'مجهول') : (group.name || 'محادثة')
+  const image = isDirect ? (member?.profilePic || '') : (group.image || '')
+  const subtitle = group.lastMessage ? (
+    <>
+      <span className="text-white">{group.lastSender?.fullName || ''}:</span>{' '}
+      {group.lastMessage.type === 'text' ? group.lastMessage.content : group.lastMessage.type === 'image' ? 'صورة' : group.lastMessage.type === 'video' ? 'فيديو' : group.lastMessage.type === 'audio' ? 'رسالة صوتية' : 'ملف'}
+    </>
+  ) : (isDirect ? 'ابدأ المحادثة' : 'لا توجد رسائل بعد')
+  const active = isDirect ? formatActiveStatus({ online, lastSeen }) : `${group.members?.length || 0} عضو`
+
+  return (
+    <div onClick={onClick} className="glass rounded-2xl p-3 flex items-center gap-3 cursor-pointer hover:bg-[#0a0a0a] hover:border-white/20 transition border border-transparent">
+      <Avatar src={image} name={title} size={52} online={isDirect && online} />
+      <div className="flex-1 min-w-0">
+        <div className="flex justify-between items-center gap-2">
+          <h3 className="font-semibold truncate">{title}</h3>
+          <span className="text-xs text-white/40 shrink-0">{formatListTime(group.lastMessage?.createdAt)}</span>
+        </div>
+        <div className="flex items-center gap-2 mt-0.5">
+          <p className="text-sm text-white/50 truncate flex-1">{subtitle}</p>
+          {isDirect && active && <span className="text-[11px] text-green-400 shrink-0">{active}</span>}
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export default function ChatList() {
   const { user } = useAuth()
@@ -62,6 +109,7 @@ export default function ChatList() {
       const ref = await addDoc(collection(db, 'groups'), {
         name: newName.trim(),
         image: '',
+        type: 'group',
         members: [user.uid],
         createdBy: user.uid,
         createdAt: serverTimestamp(),
@@ -74,7 +122,7 @@ export default function ChatList() {
           await updateDoc(ref, { image: imageUrl })
         } catch (e) {
           console.warn('Group image upload failed', e)
-          setError('تم إنشاء المحادثة لكن فشل رفع صورتها.')
+          setError('تم إنشاء المجموعة لكن فشل رفع صورتها.')
         }
       }
       setNewName('')
@@ -84,12 +132,16 @@ export default function ChatList() {
       navigate(`/chat/${ref.id}`)
     } catch (e) {
       console.error(e)
-      setError('تعذّر إنشاء المحادثة، تحقق من الاتصال والصلاحيات.')
+      setError('تعذّر إنشاء المجموعة، تحقق من الاتصال والصلاحيات.')
     }
     setLoading(false)
   }
 
-  const filtered = groups.filter(g => g.name?.toLowerCase().includes(search.toLowerCase()))
+  const filtered = groups.filter(g => {
+    const term = search.toLowerCase()
+    if ((g.name || '').toLowerCase().includes(term)) return true
+    return false
+  })
 
   return (
     <Layout>
@@ -109,24 +161,7 @@ export default function ChatList() {
 
       <div className="flex-1 overflow-y-auto px-4 sm:px-5 pb-28 space-y-3">
         {filtered.map(g => (
-          <div key={g.id} onClick={() => navigate(`/chat/${g.id}`)}
-            className="glass rounded-2xl p-3 flex items-center gap-3 cursor-pointer hover:bg-[#0a0a0a] hover:border-white/20 transition border border-transparent">
-            <Avatar src={g.image} name={g.name} size={52} />
-            <div className="flex-1 min-w-0">
-              <div className="flex justify-between items-center gap-2">
-                <h3 className="font-semibold truncate">{g.name}</h3>
-                <span className="text-xs text-white/40 shrink-0">{formatListTime(g.lastMessage?.createdAt)}</span>
-              </div>
-              <p className="text-sm text-white/50 truncate mt-0.5">
-                {g.lastMessage ? (
-                  <>
-                    <span className="text-white">{g.lastSender?.fullName || ''}:</span>{' '}
-                    {g.lastMessage.type === 'text' ? g.lastMessage.content : g.lastMessage.type === 'image' ? 'صورة' : g.lastMessage.type === 'video' ? 'فيديو' : g.lastMessage.type === 'audio' ? 'رسالة صوتية' : 'ملف'}
-                  </>
-                ) : 'لا توجد رسائل بعد'}
-              </p>
-            </div>
-          </div>
+          <ChatItem key={g.id} group={g} user={user} onClick={() => navigate(`/chat/${g.id}`)} />
         ))}
         {filtered.length === 0 && !error && (
           <div className="text-center text-white/40 py-12 glass rounded-3xl mx-2">
@@ -143,7 +178,7 @@ export default function ChatList() {
       {showCreate && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 p-4">
           <div className="glass-strong rounded-3xl w-full max-w-sm p-5 page-enter border border-white/10">
-            <h3 className="font-bold text-xl mb-4 gradient-text">محادثة جديدة</h3>
+            <h3 className="font-bold text-xl mb-4 gradient-text">مجموعة جديدة</h3>
             <form onSubmit={createGroup} className="space-y-4">
               <div className="flex justify-center">
                 <label className="w-20 h-20 rounded-full overflow-hidden bg-[#111] border border-white/20 flex items-center justify-center cursor-pointer">
@@ -154,7 +189,7 @@ export default function ChatList() {
                   }} />
                 </label>
               </div>
-              <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="اسم المحادثة" required
+              <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="اسم المجموعة" required
                 className="w-full rounded-2xl px-4 py-3" />
               {error && <p className="text-sm text-white bg-white/10 rounded-xl p-3 border border-white/10">{error}</p>}
               <div className="flex gap-3">

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { doc, onSnapshot, collection, query, orderBy, addDoc, setDoc, serverTimestamp, updateDoc, arrayUnion, arrayRemove, getDoc, getDocs, deleteDoc } from 'firebase/firestore'
+import { doc, onSnapshot, collection, query, orderBy, addDoc, setDoc, serverTimestamp, updateDoc, arrayUnion, arrayRemove, getDoc, getDocs, deleteDoc, Timestamp } from 'firebase/firestore'
 import { getIdToken } from 'firebase/auth'
 import { auth, db } from '../firebase'
 import { useAuth } from '../App'
@@ -8,7 +8,9 @@ import { Avatar } from '../components/Avatar'
 import { MessageBubble } from '../components/MessageBubble'
 import { VoiceRecorder } from '../components/VoiceRecorder'
 import { uploadFile, getFileType } from '../utils/uploadFile'
-import { ChevronRight, Send, Paperclip, MoreVertical, UserPlus, Trash2, LogOut, X } from 'lucide-react'
+import { usePresence } from '../hooks/usePresence'
+import { formatActiveStatus } from '../utils/activeStatus'
+import { ChevronRight, Send, Paperclip, MoreVertical, UserPlus, Trash2, LogOut, X, Reply, Ban } from 'lucide-react'
 
 export default function Chat() {
   const { groupId } = useParams()
@@ -28,11 +30,17 @@ export default function Chat() {
   const [pendingType, setPendingType] = useState(null)
   const [pendingPreview, setPendingPreview] = useState('')
   const [typingUsers, setTypingUsers] = useState([])
+  const [replyTo, setReplyTo] = useState(null)
+  const [blocked, setBlocked] = useState(false)
   const bottomRef = useRef(null)
   const fileRef = useRef()
   const typingTimerRef = useRef(null)
   const clearTypingTimerRef = useRef(null)
   const readMarkedRef = useRef(null)
+
+  const isDirect = group?.type === 'direct' || group?.isDirect
+  const otherUser = isDirect ? Object.values(members).find(m => m?.uid !== user.uid) : null
+  const { online, lastSeen } = usePresence(otherUser?.uid)
 
   useEffect(() => {
     if (!groupId) return
@@ -68,7 +76,7 @@ export default function Chat() {
       if (typingTimerRef.current) clearTimeout(typingTimerRef.current)
       if (clearTypingTimerRef.current) clearTimeout(clearTypingTimerRef.current)
       if (groupId && user.uid) {
-        setDoc(doc(db, 'groups', groupId, 'typing', user.uid), { typing: false, updatedAt: serverTimestamp() })
+        setDoc(doc(db, 'groups', groupId, 'typing', user.uid), { typing: false, updatedAt: Timestamp.now() })
       }
     }
   }, [groupId, user.uid])
@@ -79,7 +87,7 @@ export default function Chat() {
       const map = {}
       await Promise.all(group.members.map(async (uid) => {
         const snap = await getDoc(doc(db, 'users', uid))
-        map[uid] = snap.exists() ? snap.data() : { fullName: 'مجهول', profilePic: '' }
+        if (snap.exists()) map[uid] = { uid: snap.id, ...snap.data() }
       }))
       setMembers(map)
     }
@@ -102,7 +110,7 @@ export default function Chat() {
           uid: user.uid,
           name: profile?.fullName || '',
           profilePic: profile?.profilePic || '',
-          updatedAt: serverTimestamp(),
+          updatedAt: Timestamp.now(),
         })
       } catch (e) { console.warn('Typing update failed', e) }
     }
@@ -128,6 +136,13 @@ export default function Chat() {
     updateDoc(doc(db, 'groups', groupId, 'messages', lastMsg.id), { readBy: arrayUnion(user.uid) })
       .catch(e => console.warn('Read receipt update failed', e))
   }, [messages, groupId, user.uid])
+
+  useEffect(() => {
+    if (!isDirect || !otherUser || !profile) return
+    const myBlocked = profile.blockedUsers || []
+    const theirBlocked = otherUser.blockedUsers || []
+    setBlocked(myBlocked.includes(otherUser.uid) || theirBlocked.includes(user.uid))
+  }, [isDirect, otherUser, profile, user.uid])
 
   const readReceipts = useMemo(() => {
     const receipts = messages.map(() => [])
@@ -155,23 +170,6 @@ export default function Chat() {
     } catch (e) { console.warn('Notification send failed', e) }
   }
 
-  const sendMessage = async (content, type = 'text', mediaUrl = '', fileName = '') => {
-    const finalContent = content || ''
-    const newMsg = {
-      senderId: user.uid,
-      type,
-      content: finalContent,
-      mediaUrl,
-      fileName,
-      createdAt: serverTimestamp(),
-    }
-    await addDoc(collection(db, 'groups', groupId, 'messages'), newMsg)
-    await updateDoc(doc(db, 'groups', groupId), { lastMessage: { ...newMsg, createdAt: serverTimestamp() } })
-    sendNotification(finalContent, type)
-    setText('')
-    clearPendingFile()
-  }
-
   const clearPendingFile = () => {
     if (pendingPreview) URL.revokeObjectURL(pendingPreview)
     setPendingFile(null)
@@ -180,9 +178,36 @@ export default function Chat() {
     if (fileRef.current) fileRef.current.value = ''
   }
 
+  const sendMessage = async (content, type = 'text', mediaUrl = '', fileName = '') => {
+    const finalContent = content || ''
+    const newMsg = {
+      senderId: user.uid,
+      type,
+      content: finalContent,
+      mediaUrl,
+      fileName,
+      replyTo: replyTo ? {
+        id: replyTo.id,
+        senderId: replyTo.senderId,
+        senderName: members[replyTo.senderId]?.fullName || 'مجهول',
+        type: replyTo.type,
+        content: replyTo.content,
+        mediaUrl: replyTo.mediaUrl,
+        fileName: replyTo.fileName,
+      } : null,
+      createdAt: serverTimestamp(),
+    }
+    await addDoc(collection(db, 'groups', groupId, 'messages'), newMsg)
+    await updateDoc(doc(db, 'groups', groupId), { lastMessage: { ...newMsg, createdAt: serverTimestamp() } })
+    sendNotification(finalContent, type)
+    setText('')
+    setReplyTo(null)
+    clearPendingFile()
+  }
+
   const handleSend = async (e) => {
     e.preventDefault()
-    if (loading) return
+    if (loading || blocked) return
     if (pendingFile) {
       await uploadAndSend(pendingFile, pendingType, text.trim())
     } else if (text.trim()) {
@@ -220,8 +245,30 @@ export default function Chat() {
     if (fileRef.current) fileRef.current.value = ''
   }
 
-  const handleVoice = (file) => {
-    uploadAndSend(file, 'audio')
+  const handleVoice = (file) => uploadAndSend(file, 'audio')
+
+  const handleReply = (msg) => setReplyTo(msg)
+
+  const handleReact = async (msg, emoji) => {
+    try {
+      const current = msg.reactions || {}
+      const users = current[emoji] || {}
+      if (users[user.uid]) {
+        const { [user.uid]: _, ...rest } = users
+        const next = { ...current, [emoji]: rest }
+        if (Object.keys(next[emoji]).length === 0) delete next[emoji]
+        await updateDoc(doc(db, 'groups', groupId, 'messages', msg.id), { reactions: next })
+      } else {
+        await updateDoc(doc(db, 'groups', groupId, 'messages', msg.id), {
+          reactions: { ...current, [emoji]: { ...users, [user.uid]: true } }
+        })
+      }
+    } catch (e) { console.warn('Reaction failed', e) }
+  }
+
+  const handleDelete = async (msg) => {
+    if (!confirm('هل تريد حذف هذه الرسالة؟')) return
+    try { await deleteDoc(doc(db, 'groups', groupId, 'messages', msg.id)) } catch (e) { console.warn('Delete failed', e) }
   }
 
   const addMember = async (e) => {
@@ -249,6 +296,21 @@ export default function Chat() {
     navigate('/')
   }
 
+  const toggleBlock = async () => {
+    if (!isDirect || !otherUser) return
+    const myRef = doc(db, 'users', user.uid)
+    const myBlocked = profile.blockedUsers || []
+    if (myBlocked.includes(otherUser.uid)) {
+      await updateDoc(myRef, { blockedUsers: arrayRemove(otherUser.uid) })
+      setBlocked(false)
+    } else {
+      await updateDoc(myRef, { blockedUsers: arrayUnion(otherUser.uid) })
+      setBlocked(true)
+    }
+  }
+
+  const goProfile = (uid) => navigate(`/profile/${uid}`)
+
   if (error) {
     return (
       <div className="h-screen w-full flex flex-col items-center justify-center p-6 overflow-hidden bg-black" dir="rtl">
@@ -267,6 +329,7 @@ export default function Chat() {
   }
 
   const isAdmin = group.createdBy === user.uid
+  const activeStatus = isDirect ? formatActiveStatus({ online, lastSeen }) : ''
 
   return (
     <div className="h-screen max-h-screen w-full bg-black flex flex-col overflow-hidden" dir="rtl">
@@ -275,27 +338,45 @@ export default function Chat() {
           <button onClick={() => navigate('/')} className="w-10 h-10 rounded-full bg-[#111] hover:bg-white/10 border border-white/20 flex items-center justify-center transition shrink-0">
             <ChevronRight size={22} className="text-white" />
           </button>
-          <Avatar src={group.image} name={group.name} size={46} />
-          <div className="min-w-0">
-            <h2 className="font-bold text-lg leading-tight truncate">{group.name}</h2>
-            <p className="text-xs text-white/40">{group.members?.length || 0} عضو</p>
-          </div>
+          {isDirect ? (
+            <div className="flex items-center gap-3 cursor-pointer" onClick={() => goProfile(otherUser?.uid)}>
+              <Avatar src={otherUser?.profilePic} name={otherUser?.fullName} size={46} online={online} />
+              <div className="min-w-0">
+                <h2 className="font-bold text-lg leading-tight truncate">{otherUser?.fullName || 'مجهول'}</h2>
+                <p className="text-xs text-green-400">{activeStatus}</p>
+              </div>
+            </div>
+          ) : (
+            <>
+              <Avatar src={group.image} name={group.name} size={46} />
+              <div className="min-w-0">
+                <h2 className="font-bold text-lg leading-tight truncate">{group.name}</h2>
+                <p className="text-xs text-white/40">{group.members?.length || 0} عضو</p>
+              </div>
+            </>
+          )}
         </div>
         <div className="relative shrink-0">
           <button onClick={() => setMenuOpen(!menuOpen)} className="w-10 h-10 rounded-full bg-[#111] hover:bg-white/10 border border-white/20 flex items-center justify-center transition">
             <MoreVertical size={20} className="text-white" />
           </button>
           {menuOpen && (
-            <div className="absolute left-0 top-full mt-2 w-44 glass-strong rounded-2xl overflow-hidden z-20 text-sm border border-white/10" dir="rtl">
-              <button onClick={() => { setShowAdd(true); setMenuOpen(false) }} className="w-full text-right px-4 py-3 hover:bg-[#0a0a0a] flex items-center gap-2 text-white"><UserPlus size={16} /> إضافة عضو</button>
-              {isAdmin && <button onClick={() => { deleteGroup(); setMenuOpen(false) }} className="w-full text-right px-4 py-3 hover:bg-white/10 text-white flex items-center gap-2"><Trash2 size={16} /> حذف</button>}
+            <div className="absolute left-0 top-full mt-2 w-48 glass-strong rounded-2xl overflow-hidden z-20 text-sm border border-white/10" dir="rtl">
+              {isDirect ? (
+                <button onClick={() => { toggleBlock(); setMenuOpen(false) }} className="w-full text-right px-4 py-3 hover:bg-[#0a0a0a] flex items-center gap-2 text-white">
+                  <Ban size={16} /> {blocked ? 'إلغاء الحظر' : 'حظر المستخدم'}
+                </button>
+              ) : (
+                <button onClick={() => { setShowAdd(true); setMenuOpen(false) }} className="w-full text-right px-4 py-3 hover:bg-[#0a0a0a] flex items-center gap-2 text-white"><UserPlus size={16} /> إضافة عضو</button>
+              )}
+              {!isDirect && isAdmin && <button onClick={() => { deleteGroup(); setMenuOpen(false) }} className="w-full text-right px-4 py-3 hover:bg-white/10 text-white flex items-center gap-2"><Trash2 size={16} /> حذف</button>}
               <button onClick={() => { leaveGroup(); setMenuOpen(false) }} className="w-full text-right px-4 py-3 hover:bg-[#0a0a0a] flex items-center gap-2 text-white/70"><LogOut size={16} /> مغادرة</button>
             </div>
           )}
         </div>
       </header>
 
-      {showAdd && (
+      {showAdd && !isDirect && (
         <div className="px-4 py-2 bg-[#0a0a0a] border-b border-white/20 flex gap-2">
           <input value={addUsername} onChange={e => setAddUsername(e.target.value)} placeholder="اسم المستخدم للإضافة" className="flex-1 rounded-xl px-3 py-2 text-sm" />
           <button onClick={addMember} className="px-4 py-2 rounded-xl gradient-bg text-sm font-bold text-black">إضافة</button>
@@ -305,13 +386,24 @@ export default function Chat() {
 
       <div className="flex-1 min-h-0 overflow-y-auto p-4 pb-24" dir="rtl">
         {messages.map((msg, idx) => (
-          <MessageBubble key={msg.id} msg={msg} user={members[msg.senderId]} isMe={msg.senderId === user.uid} readBy={readReceipts[idx]} />
+          <MessageBubble
+            key={msg.id}
+            msg={msg}
+            user={members[msg.senderId]}
+            isMe={msg.senderId === user.uid}
+            currentUserId={user.uid}
+            readBy={readReceipts[idx]}
+            onReply={handleReply}
+            onReact={handleReact}
+            onDelete={handleDelete}
+            onProfileClick={goProfile}
+          />
         ))}
         {typingUsers.length > 0 && (
           <div className="flex items-end gap-2 mb-3" dir="ltr">
             <div className="flex -space-x-2 rtl:space-x-reverse">
-              {typingUsers.slice(0, 3).map((u, i) => (
-                <div key={u.uid} className="w-7 h-7 rounded-full overflow-hidden border-2 border-black" style={{ zIndex: 10 - i }}>
+              {typingUsers.slice(0, 3).map((u) => (
+                <div key={u.uid} className="w-7 h-7 rounded-full overflow-hidden border-2 border-black">
                   <Avatar src={u.profilePic} name={u.name || 'مجهول'} size={28} />
                 </div>
               ))}
@@ -333,6 +425,19 @@ export default function Chat() {
 
       {uploadErr && (
         <div className="px-4 py-2 text-xs text-red-300 bg-red-900/20 border-t border-red-500/20" dir="rtl">{uploadErr}</div>
+      )}
+
+      {replyTo && (
+        <div className="glass-strong px-4 py-2 border-t border-white/10 flex items-center justify-between" dir="rtl">
+          <div className="flex items-center gap-2 min-w-0">
+            <Reply size={16} className="text-white/50 shrink-0" />
+            <div className="min-w-0">
+              <p className="text-[11px] text-white/50">رد على {members[replyTo.senderId]?.fullName || 'مجهول'}</p>
+              <p className="text-xs text-white/70 truncate">{replyTo.content || (replyTo.type === 'image' ? 'صورة' : replyTo.type === 'video' ? 'فيديو' : replyTo.type === 'audio' ? 'رسالة صوتية' : 'ملف')}</p>
+            </div>
+          </div>
+          <button onClick={() => setReplyTo(null)} className="p-1.5 rounded-full bg-white/10 hover:bg-white/20 shrink-0"><X size={14} className="text-white" /></button>
+        </div>
       )}
 
       {pendingFile && (
@@ -360,36 +465,42 @@ export default function Chat() {
         </div>
       )}
 
-      <form onSubmit={handleSend} className="glass-strong p-3 flex items-center gap-2 shrink-0 border-t border-white/10">
-        <input
-          type="file"
-          ref={fileRef}
-          accept="image/*,video/*,audio/*"
-          onChange={handleFile}
-          className="hidden"
-        />
-        <button type="button" onClick={() => fileRef.current?.click()} disabled={loading} className="w-11 h-11 rounded-full bg-[#111] hover:bg-white/10 border border-white/20 flex items-center justify-center transition shrink-0 disabled:opacity-40" title="إرفاق صورة أو فيديو أو صوت">
-          <Paperclip size={20} className="text-white" />
-        </button>
+      {blocked ? (
+        <div className="blocked-banner p-4 text-center text-sm" dir="rtl">
+          لا يمكنك إرسال رسائل إلى هذا المستخدم.
+        </div>
+      ) : (
+        <form onSubmit={handleSend} className="glass-strong p-3 flex items-center gap-2 shrink-0 border-t border-white/10">
+          <input
+            type="file"
+            ref={fileRef}
+            accept="image/*,video/*,audio/*"
+            onChange={handleFile}
+            className="hidden"
+          />
+          <button type="button" onClick={() => fileRef.current?.click()} disabled={loading} className="w-11 h-11 rounded-full bg-[#111] hover:bg-white/10 border border-white/20 flex items-center justify-center transition shrink-0 disabled:opacity-40" title="إرفاق صورة أو فيديو أو صوت">
+            <Paperclip size={20} className="text-white" />
+          </button>
 
-        <div className="shrink-0"><VoiceRecorder onRecord={handleVoice} disabled={loading || pendingFile} /></div>
+          <div className="shrink-0"><VoiceRecorder onRecord={handleVoice} disabled={loading || pendingFile} /></div>
 
-        <input
-          value={text}
-          onChange={e => setText(e.target.value)}
-          placeholder={loading ? 'جارٍ الإرسال...' : (pendingFile ? 'اضف تعليقًا (اختياري)...' : 'رسالة...')}
-          disabled={loading}
-          className="flex-1 rounded-2xl px-4 py-3 min-w-0 disabled:opacity-60"
-        />
+          <input
+            value={text}
+            onChange={e => setText(e.target.value)}
+            placeholder={loading ? 'جارٍ الإرسال...' : (pendingFile ? 'اضف تعليقًا (اختياري)...' : 'رسالة...')}
+            disabled={loading}
+            className="flex-1 rounded-2xl px-4 py-3 min-w-0 disabled:opacity-60"
+          />
 
-        <button
-          type="submit"
-          disabled={loading || (!text.trim() && !pendingFile)}
-          className="w-11 h-11 rounded-full gradient-bg disabled:opacity-40 transition flex items-center justify-center shrink-0"
-        >
-          <Send size={20} />
-        </button>
-      </form>
+          <button
+            type="submit"
+            disabled={loading || (!text.trim() && !pendingFile)}
+            className="w-11 h-11 rounded-full gradient-bg disabled:opacity-40 transition flex items-center justify-center shrink-0"
+          >
+            <Send size={20} />
+          </button>
+        </form>
+      )}
     </div>
   )
 }
