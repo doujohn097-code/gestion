@@ -1,11 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { doc, getDoc, addDoc, getDocs, onSnapshot, query, collection, serverTimestamp, where, updateDoc } from 'firebase/firestore'
+import { doc, getDoc, addDoc, getDocs, onSnapshot, query, collection, serverTimestamp, where, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore'
 import { updateEmail, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth'
 import { auth, db } from '../firebase'
 import { useAuth } from '../App'
 import { uploadFile } from '../utils/uploadFile'
-import { ChevronRight, MessageCircle, User, Mail, Calendar, UserPlus, Check, Send, Pencil, Camera, X, Lock, AtSign, FileText, Save, Ban } from 'lucide-react'
+import { ChevronRight, MessageCircle, User, Mail, Calendar, UserPlus, Check, Send, Pencil, Camera, X, Lock, AtSign, FileText, Save, Ban, Users } from 'lucide-react'
 import { Avatar } from '../components/Avatar'
 import { usePresence } from '../hooks/usePresence'
 import { formatActiveStatus } from '../utils/activeStatus'
@@ -37,9 +37,15 @@ export default function Profile() {
 
   const [pendingPics, setPendingPics] = useState({ profilePic: '', coverPic: '' })
   const [pendingFiles, setPendingFiles] = useState({ profilePic: null, coverPic: null })
+  const [friends, setFriends] = useState([])
+  const [repeat, setRepeat] = useState(2)
+  const [scrollDuration, setScrollDuration] = useState(30)
 
   const profileRef = useRef()
   const coverRef = useRef()
+  const stripRef = useRef()
+  const fromReqs = useRef([])
+  const toReqs = useRef([])
 
   useEffect(() => {
     const fetch = async () => {
@@ -99,6 +105,44 @@ export default function Profile() {
     const myBlocked = profile?.blockedUsers || []
     setBlocked(myBlocked.includes(uid))
   }, [profile, uid])
+
+  useEffect(() => {
+    if (!uid) return
+    const loadFriends = async () => {
+      const friendIds = new Set()
+      ;[...fromReqs.current, ...toReqs.current].forEach(d => {
+        const data = d.data ? d.data() : d
+        const fid = data.from === uid ? data.to : data.from
+        if (fid && fid !== uid) friendIds.add(fid)
+      })
+      const list = []
+      await Promise.all([...friendIds].map(async fid => {
+        const snap = await getDoc(doc(db, 'users', fid))
+        if (snap.exists()) list.push({ uid: snap.id, ...snap.data() })
+      }))
+      setFriends(list)
+    }
+    const q1 = query(collection(db, 'friendRequests'), where('from', '==', uid), where('status', '==', 'accepted'))
+    const q2 = query(collection(db, 'friendRequests'), where('to', '==', uid), where('status', '==', 'accepted'))
+    const unsub1 = onSnapshot(q1, (snap) => { fromReqs.current = snap.docs; loadFriends() })
+    const unsub2 = onSnapshot(q2, (snap) => { toReqs.current = snap.docs; loadFriends() })
+    return () => { unsub1(); unsub2() }
+  }, [uid])
+
+  useEffect(() => {
+    if (!friends.length || !stripRef.current) return
+    const update = () => {
+      const cardW = 160 + 12
+      const setW = friends.length * cardW
+      const containerW = stripRef.current?.clientWidth || window.innerWidth
+      const r = Math.max(2, Math.ceil((containerW * 2) / setW))
+      setRepeat(r)
+      setScrollDuration(Math.max(20, r * 5))
+    }
+    update()
+    window.addEventListener('resize', update)
+    return () => window.removeEventListener('resize', update)
+  }, [friends])
 
   const toggleBlock = async () => {
     if (!user || uid === user.uid) return
@@ -399,42 +443,30 @@ export default function Profile() {
       </div>
 
       {!editMode && (
-        <div className="flex-1 px-5 sm:px-6 py-6">
-          <div className="glass-strong rounded-2xl p-4 sm:p-5 border border-white/10">
-            <h3 className="font-semibold mb-4 flex items-center gap-2 text-white"><User size={18} /> نبذة</h3>
-            <div className="space-y-4 text-sm">
-              {target.bio && (
-                <div className="flex items-start gap-3">
-                  <div className="w-9 h-9 rounded-full bg-[#111] border border-white/10 flex items-center justify-center text-white/60"><FileText size={16} /></div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-white/50 text-xs">نبذة</p>
-                    <p className="text-white font-medium leading-relaxed">{target.bio}</p>
+        <div className="flex-1 px-5 sm:px-6 py-6 overflow-hidden" ref={stripRef}>
+          <h3 className="font-semibold mb-4 flex items-center gap-2 text-white"><Users size={18} /> الأصدقاء ({friends.length})</h3>
+          {friends.length === 0 ? (
+            <p className="text-white/40 text-sm">لا يوجد أصدقاء بعد.</p>
+          ) : (
+            <div className="relative overflow-hidden">
+              <div
+                className="friends-scroll flex gap-3 py-2"
+                style={{ '--n': repeat, animationDuration: `${scrollDuration}s` }}
+              >
+                {[...Array(repeat)].flatMap((_, i) => friends.map(f => (
+                  <div
+                    key={`${f.uid}-${i}`}
+                    onClick={() => navigate(`/profile/${f.uid}`)}
+                    className="shrink-0 w-40 glass rounded-2xl p-3 flex flex-col items-center text-center cursor-pointer hover:bg-white/10 transition"
+                  >
+                    <Avatar src={f.profilePic} name={f.fullName} size={56} />
+                    <p className="mt-2 text-sm font-semibold truncate w-full">{f.fullName}</p>
+                    <p className="text-xs text-white/50 truncate w-full">@{f.username}</p>
                   </div>
-                </div>
-              )}
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-[#111] border border-white/10 flex items-center justify-center text-white/60"><User size={16} /></div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-white/50 text-xs">الاسم الكامل</p>
-                  <p className="text-white font-medium truncate">{target.fullName}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-[#111] border border-white/10 flex items-center justify-center text-white/60"><Mail size={16} /></div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-white/50 text-xs">البريد الإلكتروني</p>
-                  <p className="text-white font-medium truncate">{target.email}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-[#111] border border-white/10 flex items-center justify-center text-white/60"><Calendar size={16} /></div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-white/50 text-xs">تاريخ الانضمام</p>
-                  <p className="text-white font-medium">{target.createdAt ? new Date(target.createdAt.seconds * 1000).toLocaleDateString('ar-EG') : '-'}</p>
-                </div>
+                )))}
               </div>
             </div>
-          </div>
+          )}
         </div>
       )}
     </div>

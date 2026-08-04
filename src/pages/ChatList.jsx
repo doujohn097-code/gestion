@@ -48,7 +48,7 @@ function ChatItem({ group, user, onClick }) {
   ) : (isDirect ? 'ابدأ المحادثة' : 'لا توجد رسائل بعد')
 
   return (
-    <div onClick={onClick} className={`rounded-2xl p-3 flex items-center gap-3 cursor-pointer transition border ${isUnread ? 'bg-white/[0.08] border-white/20 hover:bg-white/10' : 'glass hover:bg-[#0a0a0a] hover:border-white/20 border-transparent'}`}>
+    <div onClick={onClick} className={`rounded-2xl p-3 flex items-center gap-3 cursor-pointer transition border ${isUnread ? 'bg-green-500/[0.08] border-r-4 border-green-500/60 hover:bg-green-500/[0.12] shadow-[0_0_20px_rgba(34,197,94,0.08)]' : 'glass hover:bg-[#0a0a0a] hover:border-white/20 border-transparent'}`}>
       <Avatar src={image} name={title} size={52} online={isDirect && online} />
       <div className="flex-1 min-w-0">
         <div className="flex justify-between items-center gap-2">

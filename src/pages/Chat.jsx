@@ -43,6 +43,11 @@ export default function Chat() {
   const { online, lastSeen } = usePresence(otherUser?.uid)
 
   useEffect(() => {
+    if (!groupId || !user?.uid) return
+    updateDoc(doc(db, 'groups', groupId), { [`lastReadAt.${user.uid}`]: Timestamp.now() }).catch(() => {})
+  }, [groupId, user.uid])
+
+  useEffect(() => {
     if (!groupId) return
     setError('')
     const unsubGroup = onSnapshot(
@@ -135,6 +140,8 @@ export default function Chat() {
     readMarkedRef.current = lastMsg.id
     updateDoc(doc(db, 'groups', groupId, 'messages', lastMsg.id), { readBy: arrayUnion(user.uid) })
       .catch(e => console.warn('Read receipt update failed', e))
+    updateDoc(doc(db, 'groups', groupId), { [`lastReadAt.${user.uid}`]: Timestamp.now() })
+      .catch(e => console.warn('Last read update failed', e))
   }, [messages, groupId, user.uid])
 
   useEffect(() => {
@@ -331,11 +338,6 @@ export default function Chat() {
   const isAdmin = group.createdBy === user.uid
   const activeStatus = isDirect ? formatActiveStatus({ online, lastSeen }) : ''
 
-  useEffect(() => {
-    if (!groupId || !user?.uid || !group) return
-    updateDoc(doc(db, 'groups', groupId), { [`lastReadAt.${user.uid}`]: Timestamp.now() }).catch(() => {})
-  }, [groupId, user.uid, group])
-
   return (
     <div className="h-screen max-h-screen w-full bg-black flex flex-col overflow-hidden" dir="rtl">
       <header className="relative z-50 glass-strong px-4 py-3 flex items-center justify-between shrink-0 border-b border-white/10">
@@ -394,7 +396,7 @@ export default function Chat() {
         </div>
       )}
 
-      <div className="flex-1 min-h-0 overflow-y-auto p-4 pb-24" dir="rtl">
+      <div className="flex-1 min-h-0 overflow-y-auto p-4 pb-24 chat-bg" dir="rtl">
         {messages.map((msg, idx) => (
           <MessageBubble
             key={msg.id}
@@ -409,6 +411,14 @@ export default function Chat() {
             onProfileClick={goProfile}
           />
         ))}
+        {messages.length === 0 && !typingUsers.length && (
+          <div className="h-full flex flex-col items-center justify-center text-white/40 text-center">
+            <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mb-3">
+              <Send size={28} className="opacity-50" />
+            </div>
+            <p className="text-sm">لا توجد رسائل بعد. ابدأ المحادثة الآن.</p>
+          </div>
+        )}
         {typingUsers.length > 0 && (
           <div className="flex items-end gap-2 mb-3" dir="ltr">
             <div className="flex -space-x-2 rtl:space-x-reverse">

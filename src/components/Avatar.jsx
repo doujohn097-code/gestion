@@ -4,8 +4,8 @@ export function Avatar({ src, name, size = 40, online, status }) {
   const [err, setErr] = useState(false)
   const initials = name ? name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase() : '?'
   const showImg = src && !err
-  const dotSize = Math.max(10, Math.round(size * 0.28))
-  const ringSize = Math.max(2, Math.round(size * 0.08))
+  const dotSize = Math.max(12, Math.round(size * 0.32))
+  const ringSize = Math.max(2, Math.round(size * 0.09))
 
   return (
     <div
@@ -33,10 +33,10 @@ export function Avatar({ src, name, size = 40, online, status }) {
           style={{
             width: dotSize,
             height: dotSize,
-            bottom: ringSize / 2,
-            right: ringSize / 2,
+            top: ringSize / 2,
+            left: ringSize / 2,
             border: `${ringSize}px solid #000`,
-            boxShadow: `0 0 0 ${Math.max(1, ringSize / 2)}px rgba(34,197,94,0.5)`,
+            boxShadow: `0 0 0 ${Math.max(1, ringSize / 2)}px rgba(34,197,94,0.55)`,
           }}
         />
       )}
