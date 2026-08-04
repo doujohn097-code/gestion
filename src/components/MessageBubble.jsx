@@ -29,6 +29,10 @@ function WaveformBars({ url, pct, isMe }) {
 
   return (
     <div className="waveform">
+      <div
+        className="waveform-glow"
+        style={{ width: `${pct}%` }}
+      />
       {bars.map((h, i) => {
         const playing = i < active
         return (
@@ -39,6 +43,7 @@ function WaveformBars({ url, pct, isMe }) {
           />
         )
       })}
+      <div className="waveform-playhead" style={{ left: `${pct}%` }} />
     </div>
   )
 }
@@ -130,7 +135,7 @@ function MediaLightbox({ url, type, onClose }) {
   )
 }
 
-export function MessageBubble({ msg, user, isMe }) {
+export function MessageBubble({ msg, user, isMe, readBy = [] }) {
   const [loaded, setLoaded] = useState(false)
   const [err, setErr] = useState(false)
   const [lightbox, setLightbox] = useState(false)
@@ -198,7 +203,21 @@ export function MessageBubble({ msg, user, isMe }) {
                 <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words mb-1" style={{ overflowWrap: 'anywhere' }}>{msg.content}</p>
               )}
               {renderContent()}
-              <div className={`text-[10px] opacity-60 mt-1 ${isMe ? 'text-right' : 'text-left'}`} dir="ltr">{time}</div>
+              <div className={`flex items-center gap-1.5 mt-1 ${isMe ? 'flex-row-reverse' : 'flex-row'}`} dir="ltr">
+                <span className="text-[10px] opacity-60">{time}</span>
+                {readBy.length > 0 && (
+                  <div className="flex -space-x-1.5 rtl:space-x-reverse" dir="ltr">
+                    {readBy.slice(0, 4).map((u, i) => (
+                      <div key={i} className="w-[14px] h-[14px] rounded-full overflow-hidden border border-black ring-1 ring-white/20" title={u.fullName}>
+                        <Avatar src={u.profilePic} name={u.fullName} size={14} />
+                      </div>
+                    ))}
+                    {readBy.length > 4 && (
+                      <span className="text-[10px] text-white/70 ml-1">+{readBy.length - 4}</span>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
