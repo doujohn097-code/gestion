@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { doc, onSnapshot, collection, query, orderBy, addDoc, setDoc, serverTimestamp, updateDoc, arrayUnion, arrayRemove, getDoc, deleteDoc, Timestamp } from 'firebase/firestore'
+import { doc, onSnapshot, collection, query, where, orderBy, addDoc, setDoc, serverTimestamp, updateDoc, arrayUnion, arrayRemove, getDoc, deleteDoc, Timestamp } from 'firebase/firestore'
 import { getIdToken } from 'firebase/auth'
 import { auth, db } from '../firebase'
 import { useAuth } from '../App'
