@@ -242,6 +242,8 @@ export const MessageBubble = React.memo(function MessageBubble({ msg, user, isMe
   const getPoint = (e) => (e.touches && e.touches[0] ? e.touches[0] : e)
 
   const startTouch = (e) => {
+    // Ignore anything but the primary mouse button; right-click uses onContextMenu.
+    if (e.type === 'mousedown' && e.button !== 0) return
     const p = getPoint(e)
     if (!p) return
     longPressTriggered.current = false
@@ -250,10 +252,13 @@ export const MessageBubble = React.memo(function MessageBubble({ msg, user, isMe
     setIsSwiping(false)
     setSwipeReady(false)
 
-    longPressRef.current = setTimeout(() => {
-      longPressRef.current = null
-      showMenu()
-    }, 500)
+    // Long-press opens the menu on touch only; desktop uses right-click.
+    if (e.type === 'touchstart') {
+      longPressRef.current = setTimeout(() => {
+        longPressRef.current = null
+        showMenu()
+      }, 500)
+    }
   }
 
   const moveTouch = (e) => {
@@ -262,9 +267,14 @@ export const MessageBubble = React.memo(function MessageBubble({ msg, user, isMe
     const dx = p.clientX - touchStartRef.current.x
     const dy = p.clientY - touchStartRef.current.y
 
+    // Cancel long-press if finger moved more than a few pixels.
+    if (Math.hypot(dx, dy) > 10 && longPressRef.current) {
+      clearTimeout(longPressRef.current)
+      longPressRef.current = null
+    }
+
     if (!isSwiping) {
       if (Math.abs(dx) < Math.abs(dy) || Math.abs(dx) < 10) {
-        if (Math.hypot(dx, dy) > 12) cancelTouch()
         return
       }
       // Horizontal swipe detected - start reply gesture.

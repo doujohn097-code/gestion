@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 
-export function Avatar({ src, name, size = 40 }) {
+export function Avatar({ src, name, size = 40, online = false }) {
   const [err, setErr] = useState(false)
   const initials = name ? name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase() : '?'
   const showImg = src && !err
@@ -24,6 +24,15 @@ export function Avatar({ src, name, size = 40 }) {
           initials
         )}
       </div>
+      {online && (
+        <span
+          className="absolute bottom-0 right-0 rounded-full bg-green-500 border-2 border-black"
+          style={{
+            width: Math.max(10, size * 0.28),
+            height: Math.max(10, size * 0.28),
+          }}
+        />
+      )}
     </div>
   )
 }

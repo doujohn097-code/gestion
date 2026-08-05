@@ -1,4 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
+import { getIdToken } from 'firebase/auth'
+import { auth } from '../firebase'
 
 const API_BASE = import.meta.env.VITE_API_BASE || ''
 
@@ -7,9 +9,16 @@ export async function uploadFile(file, path = 'uploads') {
   const ext = file.name.split('.').pop()
   const key = `${path}/${uuidv4()}.${ext}`
 
+  // The presign endpoint requires a Firebase ID token.
+  if (!auth.currentUser) throw new Error('يجب تسجيل الدخول لرفع الملفات')
+  const token = await getIdToken(auth.currentUser)
+
   const res = await fetch(`${API_BASE}/api/presign`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
     body: JSON.stringify({ key, contentType: file.type || 'application/octet-stream' }),
   })
 

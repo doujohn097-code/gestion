@@ -165,9 +165,20 @@ export default function Profile() {
   const handleFile = async (type, e) => {
     const file = e.target.files?.[0]
     if (!file) return
+    // Only ever write into the signed-in user's own storage prefix.
+    if (!user || uid !== user.uid) return
+    if (!file.type.startsWith('image/')) {
+      setErr('يرجى اختيار ملف صورة صالح.')
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setErr('حجم الصورة يجب أن يكون أقل من 5 ميغابايت.')
+      return
+    }
     try {
-      const url = await uploadFile(file, `users/${uid}/${type}`)
+      const url = await uploadFile(file, `users/${user.uid}/${type}`)
       setPendingPics(prev => ({ ...prev, [type]: url }))
+      setErr('')
     } catch {
       setErr('فشل رفع الصورة.')
     }
@@ -191,6 +202,11 @@ export default function Profile() {
   const save = async () => {
     setErr('')
     setMsg('')
+    // Guard: never allow saving onto a profile that is not your own.
+    if (!user || uid !== user.uid) {
+      setErr('لا يمكنك تعديل بروفايل مستخدم آخر.')
+      return
+    }
     const error = await validate()
     if (error) { setErr(error); return }
 
@@ -218,7 +234,7 @@ export default function Profile() {
         profilePic: pendingPics.profilePic,
         coverPic: pendingPics.coverPic,
       }
-      await updateDoc(doc(db, 'users', uid), updates)
+      await updateDoc(doc(db, 'users', user.uid), updates)
 
       setTarget(prev => ({ ...prev, ...updates }))
       setMsg('تم حفظ التغييرات.')
@@ -256,7 +272,6 @@ export default function Profile() {
       confirmPassword: '',
     })
     setPendingPics({ profilePic: target.profilePic || '', coverPic: target.coverPic || '' })
-    setPendingFiles({ profilePic: null, coverPic: null })
   }
 
   if (loading) {

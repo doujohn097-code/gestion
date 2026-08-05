@@ -1,5 +1,25 @@
 import { AwsClient } from 'aws4fetch'
 import { createHash } from 'crypto'
+import { initializeApp, cert, getApps } from 'firebase-admin/app'
+import { getAuth } from 'firebase-admin/auth'
+
+function getAdminApp() {
+  if (getApps().length > 0) return getApps()[0]
+  const key = process.env.FIREBASE_ADMIN_KEY
+  if (!key) throw new Error('FIREBASE_ADMIN_KEY not configured')
+  const credential = cert(JSON.parse(Buffer.from(key, 'base64').toString('utf8')))
+  return initializeApp({ credential, projectId: process.env.VITE_FIREBASE_PROJECT_ID || 'gestion-67' })
+}
+
+// Reject keys that escape their prefix or contain traversal segments.
+function isSafeKey(key) {
+  return typeof key === 'string'
+    && key.length > 0
+    && key.length < 512
+    && !key.includes('..')
+    && !key.startsWith('/')
+    && /^[A-Za-z0-9/._-]+$/.test(key)
+}
 
 const corsXml = `<?xml version="1.0" encoding="UTF-8"?>
 <CORSConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
@@ -167,6 +187,27 @@ export default async function handler(req, res) {
   const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {}
   const { key, contentType } = body
   if (!key || !contentType) return res.status(400).json({ error: 'Missing key or contentType' })
+
+  // Require a valid Firebase ID token so only signed-in users can upload.
+  let uid
+  try {
+    const authHeader = req.headers.authorization || ''
+    const idToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : ''
+    if (!idToken) return res.status(401).json({ error: 'Missing token' })
+    const decoded = await getAuth(getAdminApp()).verifyIdToken(idToken)
+    uid = decoded.uid
+  } catch (err) {
+    return res.status(401).json({ error: 'Invalid token' })
+  }
+
+  if (!isSafeKey(key)) return res.status(400).json({ error: 'Invalid key' })
+
+  // A user may only write to their own prefix or a group they belong to.
+  if (key.startsWith('users/')) {
+    if (key.split('/')[1] !== uid) return res.status(403).json({ error: 'Forbidden' })
+  } else if (!key.startsWith('groups/')) {
+    return res.status(403).json({ error: 'Forbidden' })
+  }
 
   const accountId = process.env.R2_ACCOUNT_ID
   const accessKey = process.env.R2_ACCESS_KEY_ID

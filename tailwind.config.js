@@ -17,7 +17,7 @@ export default {
         'surface-light': '#25252e',
       },
       fontFamily: {
-        sans: ['Almarai', 'Inter', 'system-ui', 'sans-serif'],
+        sans: ['Cairo', 'Inter', 'system-ui', 'sans-serif'],
       },
     },
   },
