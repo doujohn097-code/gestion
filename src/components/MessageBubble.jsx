@@ -191,7 +191,7 @@ function MessageMenu({ onClose, onReply, onReact, onDelete, userReaction }) {
   )
 }
 
-export function MessageBubble({ msg, user, isMe, readBy = [], currentUserId, onReply, onReact, onDelete, onProfileClick }) {
+export const MessageBubble = React.memo(function MessageBubble({ msg, user, isMe, readBy = [], currentUserId, onReply, onReact, onDelete, onProfileClick }) {
   const [loaded, setLoaded] = useState(false)
   const [err, setErr] = useState(false)
   const [lightbox, setLightbox] = useState(false)
@@ -511,4 +511,4 @@ export function MessageBubble({ msg, user, isMe, readBy = [], currentUserId, onR
       )}
     </>
   )
-}
+})

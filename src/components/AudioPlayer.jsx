@@ -17,28 +17,30 @@ function seededRandom(seed) {
   }
 }
 
-function WaveformBars({ url, pct }) {
-  const barCount = 36
+function WaveformBars({ url, pct, playing }) {
+  const barCount = 42
   const bars = useMemo(() => {
     const rand = seededRandom(url || 'default')
-    return Array.from({ length: barCount }, () => 0.25 + rand() * 0.75)
+    return Array.from({ length: barCount }, () => 0.2 + rand() * 0.8)
   }, [url])
   const active = Math.max(0, Math.min(barCount, Math.floor((pct / 100) * barCount)))
 
   return (
-    <div className="waveform">
-      <div className="waveform-glow" style={{ width: `${pct}%` }} />
+    <div className="waveform-instagram">
       {bars.map((h, i) => {
-        const playing = i < active
+        const isActive = i < active
+        const isPast = i < active - 1
         return (
           <span
             key={i}
-            className={`waveform-bar ${playing ? 'active' : ''}`}
-            style={{ height: `${Math.max(16, h * 80)}%` }}
+            className={`waveform-bar-instagram ${isActive ? 'active' : ''} ${playing && !isPast ? 'animate' : ''}`}
+            style={{
+              height: `${Math.max(20, h * 100)}%`,
+              animationDelay: `${i * 0.05}s`
+            }}
           />
         )
       })}
-      <div className="waveform-playhead" style={{ left: `${pct}%` }} />
     </div>
   )
 }
@@ -87,21 +89,21 @@ export default function AudioPlayer({ url, className = '' }) {
   const pct = duration ? (current / duration) * 100 : 0
 
   return (
-    <div className={`flex items-center gap-2 w-full max-w-full min-w-0 ${className}`} dir="ltr">
+    <div className={`flex items-center gap-3 w-full max-w-full min-w-0 audio-player-instagram ${className}`} dir="ltr">
       <button
         onClick={toggle}
         type="button"
-        className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 text-white hover:bg-white/10 transition"
+        className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 bg-white/10 hover:bg-white/15 text-white transition-all duration-200"
         aria-label={playing ? 'إيقاف مؤقت' : 'تشغيل'}
       >
-        {playing ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" className="ml-0.5" />}
+        {playing ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" className="ml-0.5" />}
       </button>
       <div className="flex-1 min-w-0" onClick={seek}>
-        <div className="h-10 cursor-pointer flex items-center">
-          <WaveformBars url={url} pct={pct} />
+        <div className="h-10 cursor-pointer flex items-center px-1">
+          <WaveformBars url={url} pct={pct} playing={playing} />
         </div>
       </div>
-      <span className="w-10 text-center text-xs font-medium text-white/80 tabular-nums shrink-0">
+      <span className="w-11 text-center text-[11px] font-medium text-white/70 tabular-nums shrink-0">
         {playing ? formatAudioTime(current) : formatAudioTime(duration)}
       </span>
       <audio ref={audioRef} src={url} preload="metadata" />
