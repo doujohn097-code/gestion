@@ -1,0 +1,9 @@
+{
+  "cleanUrls": true,
+  "rewrites": [
+    { "source": "/api/login", "destination": "https://aite-lite.vercel.app/login" },
+    { "source": "/api/logout", "destination": "https://aite-lite.vercel.app/logout" },
+    { "source": "/api/register", "destination": "https://aite-lite.vercel.app/register" },
+    { "source": "/api/:path*", "destination": "https://aite-lite.vercel.app/api/:path*" }
+  ]
+}
