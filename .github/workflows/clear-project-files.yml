@@ -1,0 +1,43 @@
+name: Clear project files
+
+on:
+  workflow_dispatch:
+    inputs:
+      directory:
+        description: 'مسار مجلد المشروع (استخدم . للجذر)'
+        required: false
+        default: 'friendgram-mobile'
+
+permissions:
+  contents: write
+
+jobs:
+  clear:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Delete project files
+        run: |
+          TARGET="${{ github.event.inputs.directory }}"
+          if [ "$TARGET" = "." ]; then
+            find . -mindepth 1 -maxdepth 1 \
+              ! -name '.github' \
+              ! -name '.git' \
+              ! -name 'README.md' \
+              ! -name '.gitignore' \
+              -exec rm -rf {} +
+          else
+            rm -rf "$TARGET"
+          fi
+
+      - name: Commit and push
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'chore: clear project files' || echo 'Nothing to commit'
+          git push
